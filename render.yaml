@@ -1,0 +1,5 @@
+services:
+  - type: web
+    name: aura-forex-frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./out

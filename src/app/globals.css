@@ -1,0 +1,185 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg:     #080b10;
+  --bg2:    #0c1018;
+  --bg3:    #101520;
+  --bg4:    #141b24;
+  --border: #1a2232;
+  --border2:#243040;
+  --acc:    #00c8f0;
+  --acc2:   #008fb0;
+  --green:  #00e676;
+  --red:    #ff3856;
+  --amber:  #ffb700;
+  --purple: #a78bfa;
+  --blue:   #4da6ff;
+  --t1:     #dde4f0;
+  --t2:     #7a8ca8;
+  --t3:     #3d4f68;
+
+  /* Legacy aliases so old components don't break */
+  --accent:       var(--acc);
+  --accent-hover: var(--acc2);
+  --bg-primary:   var(--bg);
+  --bg-secondary: var(--bg2);
+  --text-primary: var(--t1);
+  --text-secondary:var(--t2);
+  --card-bg:      var(--bg3);
+  --nav-bg:       var(--bg2);
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--t1);
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+button, input, select, textarea { font: inherit; }
+
+::selection { background: rgba(0, 200, 240, 0.25); }
+
+/* Scrollbar */
+::-webkit-scrollbar       { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--acc); }
+
+/* Animations */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+@keyframes pulse-green {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0,230,118,0.4); }
+  50%       { box-shadow: 0 0 0 6px rgba(0,230,118,0); }
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.animate-blink    { animation: blink 1s step-end infinite; }
+.animate-pulse-g  { animation: pulse-green 2s infinite; }
+.animate-slide-in { animation: slide-in 0.25s ease both; }
+.animate-fade-in  { animation: fade-in 0.2s ease both; }
+
+/* Card base */
+.card {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+/* Mono font util */
+.font-mono-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Gradient text */
+.text-gradient {
+  background: linear-gradient(135deg, var(--acc), var(--purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Toggle switch */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+}
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-switch .slider {
+  position: absolute; inset: 0;
+  background: var(--border2);
+  border-radius: 20px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.toggle-switch .slider::before {
+  content: '';
+  position: absolute;
+  width: 14px; height: 14px;
+  left: 3px; top: 3px;
+  background: var(--t2);
+  border-radius: 50%;
+  transition: transform 0.2s, background 0.2s;
+}
+.toggle-switch input:checked + .slider { background: var(--acc); }
+.toggle-switch input:checked + .slider::before {
+  transform: translateX(16px);
+  background: #fff;
+}
+
+/* Nav pill active */
+.nav-active {
+  background: rgba(0,200,240,0.12);
+  color: var(--acc);
+}
+.nav-active svg { color: var(--acc); }
+
+/* Pill button */
+.pill {
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.pill-active { background: var(--acc); color: #000; border-color: var(--acc); }
+.pill-inactive {
+  background: transparent;
+  color: var(--t2);
+  border-color: var(--border2);
+}
+.pill-inactive:hover { border-color: var(--acc); color: var(--acc); }
+
+/* Stat bar fill */
+.stat-fill { height: 3px; border-radius: 2px; transition: width 0.6s ease; }
+
+/* Input base */
+.inp {
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  color: var(--t1);
+  padding: 7px 12px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s;
+  width: 100%;
+}
+.inp:focus { border-color: var(--acc); }
+.inp::placeholder { color: var(--t3); }
+
+/* Select base */
+select.inp {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%237a8ca8' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+}
