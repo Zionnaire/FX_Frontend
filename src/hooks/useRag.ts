@@ -6,8 +6,10 @@ import * as ragService from '../services/rag.service';
 export function useRag() {
   const [documents,    setDocuments]    = useState<any[]>([]);
   const [autoFeedDocs, setAutoFeedDocs] = useState<any[]>([]);
+  const [seededDocs,   setSeededDocs]   = useState<any[]>([]);
   const [loading,      setLoading]      = useState(false);
   const [autoLoading,  setAutoLoading]  = useState(false);
+  const [seedLoading,  setSeedLoading]  = useState(false);
   const [error,        setError]        = useState<string | null>(null);
 
   const fetchRagDocuments = useCallback(async () => {
@@ -34,10 +36,20 @@ export function useRag() {
     }
   }, []);
 
+  const fetchSeeded = useCallback(async () => {
+    try {
+      const response = await ragService.getSeededDocs();
+      setSeededDocs(response.data.data ?? []);
+    } catch {
+      // silent
+    }
+  }, []);
+
   useEffect(() => {
     fetchRagDocuments();
     fetchAutoFeed();
-  }, [fetchRagDocuments, fetchAutoFeed]);
+    fetchSeeded();
+  }, [fetchRagDocuments, fetchAutoFeed, fetchSeeded]);
 
   const createDocument = async (formData: FormData) => {
     const response = await ragService.uploadDocument(formData);
@@ -66,18 +78,33 @@ export function useRag() {
     return response.data.data?.eventsIngested ?? 0;
   };
 
+  const triggerSeedKnowledge = async (): Promise<{ seeded: number; skipped: number; errors: number }> => {
+    setSeedLoading(true);
+    try {
+      const response = await ragService.seedKnowledge();
+      await fetchSeeded();
+      return response.data.data ?? { seeded: 0, skipped: 0, errors: 0 };
+    } finally {
+      setSeedLoading(false);
+    }
+  };
+
   return {
     documents,
     autoFeedDocs,
+    seededDocs,
     loading,
     autoLoading,
+    seedLoading,
     error,
     fetchRagDocuments,
     fetchAutoFeed,
+    fetchSeeded,
     createDocument,
     deleteDocument,
     queryKnowledge,
     addManualEntry,
     triggerCalendarIngest,
+    triggerSeedKnowledge,
   };
 }

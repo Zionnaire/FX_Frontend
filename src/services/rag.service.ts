@@ -29,3 +29,11 @@ export function getAutoFeed() {
 export function triggerCalendarIngest() {
   return api.post('/rag/auto-feed/calendar');
 }
+
+export function seedKnowledge() {
+  return api.post('/rag/seed');
+}
+
+export function getSeededDocs() {
+  return api.get('/rag/seed');
+}

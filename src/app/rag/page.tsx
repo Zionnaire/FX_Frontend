@@ -36,9 +36,9 @@ function AutoFeedTag({ tag }: { tag?: string }) {
 
 export default function RagPage() {
   const {
-    documents, autoFeedDocs, loading, autoLoading,
-    createDocument, deleteDocument, queryKnowledge, addManualEntry, triggerCalendarIngest,
-    fetchAutoFeed,
+    documents, autoFeedDocs, seededDocs, loading, autoLoading, seedLoading,
+    createDocument, deleteDocument, queryKnowledge, addManualEntry,
+    triggerCalendarIngest, triggerSeedKnowledge, fetchAutoFeed, fetchSeeded,
   } = useRag();
   const { addToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -54,6 +54,7 @@ export default function RagPage() {
   const [manualPair,       setManualPair]       = useState(PAIRS[0]);
   const [submittingManual, setSubmittingManual] = useState(false);
   const [ingestingCal,     setIngestingCal]     = useState(false);
+  const [seedResult,       setSeedResult]       = useState<{ seeded: number; skipped: number } | null>(null);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -140,6 +141,20 @@ export default function RagPage() {
       addToast('Calendar fetch failed', 'error');
     } finally {
       setIngestingCal(false);
+    }
+  };
+
+  const handleSeedKnowledge = async () => {
+    try {
+      const result = await triggerSeedKnowledge();
+      setSeedResult(result);
+      if (result.seeded > 0) {
+        addToast(`${result.seeded} knowledge documents indexed into AI Brain`, 'success');
+      } else if (result.skipped > 0) {
+        addToast('Training library already loaded — all documents up to date', 'success');
+      }
+    } catch {
+      addToast('Failed to seed knowledge library', 'error');
     }
   };
 
@@ -265,28 +280,64 @@ export default function RagPage() {
                 )}
               </div>
 
-              {/* Other auto-feed docs */}
-              {autoFeedDocs.filter((d) => !d.metadata?.tag?.includes('trade-review') && d.metadata?.source !== 'economic_calendar').length > 0 && (
-                <div>
-                  <div className="text-xs font-semibold uppercase mb-2" style={{ color: 'var(--t3)' }}>Other Auto-Indexed</div>
-                  <div className="space-y-2">
-                    {autoFeedDocs
-                      .filter((d) => !d.metadata?.tag?.includes('trade-review') && d.metadata?.source !== 'economic_calendar')
-                      .map((doc: any) => (
-                        <div key={doc._id} className="flex items-center gap-3 p-2.5 rounded" style={{ background: 'var(--bg2)', border: '1px solid var(--border)' }}>
-                          <span className="text-base">🤖</span>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-xs font-medium truncate" style={{ color: 'var(--t1)' }}>{doc.fileName}</div>
-                            <div className="text-xs" style={{ color: 'var(--t3)' }}>{doc.chunkCount} chunks</div>
-                          </div>
-                          <AutoFeedTag tag={doc.metadata?.tag} />
+              {/* Training Library */}
+              <div className="mb-3">
+                <div
+                  className="rounded-lg p-4"
+                  style={{
+                    background: seededDocs.length > 0 ? 'rgba(0,200,240,0.06)' : 'var(--bg3)',
+                    border: seededDocs.length > 0 ? '1px solid rgba(0,200,240,0.25)' : '1px solid var(--border)',
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-bold" style={{ color: 'var(--t1)' }}>FOREX Training Library</span>
+                        {seededDocs.length > 0
+                          ? <span className="text-xs px-1.5 py-0.5 rounded font-semibold" style={{ background: 'rgba(0,230,118,0.15)', color: 'var(--green)', border: '1px solid rgba(0,230,118,0.3)' }}>{seededDocs.length} docs loaded</span>
+                          : <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,183,0,0.15)', color: 'var(--amber)', border: '1px solid rgba(255,183,0,0.3)' }}>not loaded</span>
+                        }
+                      </div>
+                      <div className="text-xs mb-2" style={{ color: 'var(--t3)' }}>
+                        {seededDocs.length > 0
+                          ? `${seededDocs.filter((d: any) => d.status === 'indexed').length}/${seededDocs.length} indexed — Moving Averages, Stochastic, Bollinger Bands, RSI, ADX/MACD/ATR/PSAR, S&R, Trade Mechanics, Psychology, Setups, Correlations, Sessions, Signal Framework`
+                          : '12-document professional trading strategy library. Loads indicators, setups, psychology, correlations, sessions, and signal interpretation into the AI.'
+                        }
+                      </div>
+                      {seedResult && seedResult.seeded > 0 && (
+                        <div className="text-xs font-semibold" style={{ color: 'var(--green)' }}>
+                          ✓ {seedResult.seeded} new documents indexed successfully
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={handleSeedKnowledge}
+                      disabled={seedLoading}
+                      className="flex-shrink-0 text-xs px-3 py-1.5 rounded font-semibold disabled:opacity-40 transition-all"
+                      style={{
+                        background: seededDocs.length > 0 ? 'var(--bg2)' : 'var(--acc)',
+                        color: seededDocs.length > 0 ? 'var(--t2)' : '#000',
+                        border: seededDocs.length > 0 ? '1px solid var(--border)' : 'none',
+                      }}
+                    >
+                      {seedLoading ? 'Loading…' : seededDocs.length > 0 ? 'Re-load' : 'Load Now'}
+                    </button>
+                  </div>
+
+                  {/* Document list when loaded */}
+                  {seededDocs.length > 0 && (
+                    <div className="mt-3 space-y-1">
+                      {seededDocs.map((doc: any, i: number) => (
+                        <div key={doc._id} className="flex items-center gap-2 text-xs py-1" style={{ borderTop: i === 0 ? '1px solid var(--border)' : 'none' }}>
+                          <span style={{ color: 'var(--acc)', fontWeight: 600, minWidth: 16 }}>{i + 1}.</span>
+                          <span className="flex-1 truncate" style={{ color: 'var(--t2)' }}>{doc.metadata?.title ?? doc.fileName}</span>
                           <StatusBadge status={doc.status} />
-                          <button onClick={() => handleDelete(doc._id)} className="text-xs ml-1" style={{ color: 'var(--red)' }}>✕</button>
                         </div>
                       ))}
-                  </div>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
           )}
 
@@ -454,12 +505,12 @@ export default function RagPage() {
         <div className="card p-4">
           <div className="text-xs font-semibold uppercase mb-3" style={{ color: 'var(--t3)' }}>Knowledge Base</div>
           {[
-            { l: 'Total Docs',    v: documents.length + autoFeedDocs.length },
+            { l: 'Total Docs',    v: documents.length + autoFeedDocs.length + seededDocs.length },
             { l: 'Manual Docs',   v: documents.length },
-            { l: 'Auto-Indexed',  v: autoFeedDocs.length, c: 'var(--acc)' },
-            { l: 'Indexed',       v: [...documents, ...autoFeedDocs].filter((d: any) => d.status === 'indexed').length,    c: 'var(--green)' },
-            { l: 'Processing',    v: [...documents, ...autoFeedDocs].filter((d: any) => d.status === 'processing').length, c: 'var(--amber)' },
-            { l: 'Errors',        v: [...documents, ...autoFeedDocs].filter((d: any) => d.status === 'error').length,      c: 'var(--red)'   },
+            { l: 'Training Lib',  v: seededDocs.length, c: 'var(--acc)' },
+            { l: 'Auto-Indexed',  v: autoFeedDocs.length, c: 'var(--purple)' },
+            { l: 'Indexed',       v: [...documents, ...autoFeedDocs, ...seededDocs].filter((d: any) => d.status === 'indexed').length,    c: 'var(--green)' },
+            { l: 'Errors',        v: [...documents, ...autoFeedDocs, ...seededDocs].filter((d: any) => d.status === 'error').length,      c: 'var(--red)'   },
           ].map(({ l, v, c }) => (
             <div key={l} className="flex justify-between text-xs py-1.5" style={{ borderBottom: '1px solid var(--border)' }}>
               <span style={{ color: 'var(--t2)' }}>{l}</span>
@@ -481,6 +532,12 @@ export default function RagPage() {
               <span>Auto-Train</span>
               <span style={{ color: autoFeedDocs.length > 0 ? 'var(--green)' : 'var(--amber)' }}>
                 {autoFeedDocs.length > 0 ? 'On' : 'Pending'}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Library</span>
+              <span style={{ color: seededDocs.length > 0 ? 'var(--green)' : 'var(--red)' }}>
+                {seededDocs.length > 0 ? `${seededDocs.length} docs` : 'Not loaded'}
               </span>
             </div>
             <div className="flex justify-between">
@@ -520,6 +577,7 @@ export default function RagPage() {
           <div className="text-xs font-semibold uppercase mb-2" style={{ color: 'var(--t3)' }}>Auto-Training Sources</div>
           <div className="space-y-2 text-xs">
             {[
+              { icon: '📚', label: 'Training Library',   desc: `${seededDocs.length}/12 docs`,   active: seededDocs.length > 0 },
               { icon: '📊', label: 'Trade Reviews',      desc: 'Auto on close', active: reviewDocs.length > 0 },
               { icon: '📅', label: 'Economic Calendar', desc: 'Manual trigger',  active: !!calendarDoc },
               { icon: '📰', label: 'News Sentiment',    desc: 'Per signal',      active: true },
