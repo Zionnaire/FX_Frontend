@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useSignal } from '../hooks/useSignal';
 import { useChart } from '../hooks/useChart';
 import { usePair } from '../hooks/usePair';
@@ -8,8 +8,9 @@ import { useTrades } from '../hooks/useTrades';
 import { useNews } from '../hooks/useNews';
 import { createChart } from 'lightweight-charts';
 import { C } from '../utils/chartColors';
+import { getPriceFormat } from '../utils/constants';
 
-function MiniChart({ data }: { data: any[] }) {
+function MiniChart({ data, pair }: { data: any[]; pair: string }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!ref.current || data.length === 0) return;
@@ -26,6 +27,7 @@ function MiniChart({ data }: { data: any[] }) {
       upColor: C.green, downColor: C.red,
       borderUpColor: C.green, borderDownColor: C.red,
       wickUpColor: C.green, wickDownColor: C.red,
+      priceFormat: getPriceFormat(pair),
     });
     candles.setData(data);
     chart.timeScale().fitContent();
@@ -34,15 +36,15 @@ function MiniChart({ data }: { data: any[] }) {
     };
     window.addEventListener('resize', onResize);
     return () => { window.removeEventListener('resize', onResize); chart.remove(); };
-  }, [data]);
+  }, [data, pair]);
   return <div ref={ref} className="w-full h-full" />;
 }
 
 function StatBox({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color?: string }) {
   return (
-    <div className="card p-3 flex flex-col gap-1">
+    <div className="card p-2 md:p-3 flex flex-col gap-1">
       <span className="text-xs" style={{ color: 'var(--t3)' }}>{label}</span>
-      <span className="text-xl font-semibold font-mono-num" style={{ color: color || 'var(--t1)' }}>{value}</span>
+      <span className="text-base md:text-xl font-semibold font-mono-num" style={{ color: color || 'var(--t1)' }}>{value}</span>
       {sub && <span className="text-xs" style={{ color: 'var(--t2)' }}>{sub}</span>}
     </div>
   );
@@ -60,14 +62,12 @@ function SignalBadge({ signal }: { signal: string }) {
   );
 }
 
-// Flatten nested indicator objects into { name, value } display pairs
 function flattenIndicators(raw: Record<string, any>): { name: string; value: string }[] {
   const fmt = (v: number) => (typeof v === 'number' ? v.toFixed(v > 10 ? 2 : 5) : String(v));
   const rows: { name: string; value: string }[] = [];
   for (const [key, val] of Object.entries(raw)) {
-    if (key === 'patterns') continue; // shown separately
+    if (key === 'patterns') continue;
     if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
-      // e.g. macd → { value, signal, histogram }, bb → { upper, mid, lower }
       const label: Record<string, string> = {
         value: 'MACD', signal: 'Signal', histogram: 'Hist',
         upper: 'BB Upper', mid: 'BB Mid', lower: 'BB Lower',
@@ -93,6 +93,7 @@ export default function Dashboard() {
   const { activePair } = usePair();
   const { trades } = useTrades();
   const { news } = useNews(activePair);
+  const [tab, setTab] = useState<'chart' | 'signal'>('chart');
 
   const recentTrades = (trades ?? []).slice(0, 8);
   const recentNews = (news ?? []).slice(0, 4);
@@ -102,85 +103,112 @@ export default function Dashboard() {
     : [];
 
   return (
-    <div className="flex gap-4 h-full overflow-hidden">
-      {/* Left column — chart area */}
-      <div className="flex flex-col gap-3 flex-1 min-w-0 overflow-auto">
-        {/* Price chart */}
-        <div className="card p-3" style={{ height: 320 }}>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold" style={{ color: 'var(--t1)' }}>{activePair} — Price</span>
-            {chartLoading && (
-              <div className="h-3 w-3 rounded-full border border-t-transparent animate-spin" style={{ borderColor: 'var(--acc)', borderTopColor: 'transparent' }} />
-            )}
-          </div>
-          <div style={{ height: 270 }}>
-            {chart && chart.length > 0
-              ? <MiniChart data={chart} />
-              : <div className="h-full flex items-center justify-center text-xs" style={{ color: 'var(--t3)' }}>
-                  {chartLoading ? 'Loading chart…' : 'No chart data'}
-                </div>
+    <div className="flex flex-col lg:flex-row gap-3 min-h-full">
+
+      {/* ── Mobile tab switcher ─────────────────────────────────────────────── */}
+      <div className="flex lg:hidden gap-1 flex-shrink-0">
+        {(['chart', 'signal'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className="flex-1 py-1.5 rounded text-xs font-semibold capitalize transition-all"
+            style={tab === t
+              ? { background: 'var(--acc)', color: '#000' }
+              : { background: 'var(--bg3)', color: 'var(--t3)', border: '1px solid var(--border)' }
             }
-          </div>
-        </div>
+          >
+            {t === 'chart' ? 'Chart & Trades' : 'Signal & News'}
+          </button>
+        ))}
+      </div>
 
-        {/* Quick stats */}
-        <div className="grid grid-cols-4 gap-2">
-          <StatBox label="Entry" value={signal?.entry ?? '—'} color="var(--acc)" />
-          <StatBox label="Take Profit" value={signal?.takeProfit ?? '—'} color="var(--green)" />
-          <StatBox label="Stop Loss" value={signal?.stopLoss ?? '—'} color="var(--red)" />
-          <StatBox label="Risk/Reward" value={signal?.riskReward ?? '—'} color="var(--amber)" />
-        </div>
+      {/* ── Left column — chart + stats + trades ───────────────────────────── */}
+      <div
+        className="flex flex-col gap-3 flex-1 min-w-0"
+        style={{ display: tab === 'signal' ? undefined : undefined }}
+      >
+        <div className={`flex flex-col gap-3 flex-1 min-w-0 ${tab === 'signal' ? 'hidden lg:flex' : 'flex'}`}>
 
-        {/* Recent trades table */}
-        <div className="card p-3 flex-1 overflow-auto">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-semibold" style={{ color: 'var(--t1)' }}>Recent Trades</span>
-            <a href="/trades" className="text-xs" style={{ color: 'var(--acc)' }}>View all →</a>
-          </div>
-          <table className="w-full text-xs">
-            <thead>
-              <tr style={{ color: 'var(--t3)', borderBottom: '1px solid var(--border)' }}>
-                <th className="text-left py-1 font-medium">Pair</th>
-                <th className="text-left py-1 font-medium">Side</th>
-                <th className="text-right py-1 font-medium">Entry</th>
-                <th className="text-right py-1 font-medium">Exit</th>
-                <th className="text-right py-1 font-medium">P&L</th>
-                <th className="text-center py-1 font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentTrades.length === 0
-                ? <tr><td colSpan={6} className="text-center py-4" style={{ color: 'var(--t3)' }}>No trades yet</td></tr>
-                : recentTrades.map((t: any) => (
-                  <tr key={t._id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td className="py-1.5 font-medium" style={{ color: 'var(--t1)' }}>{t.pair}</td>
-                    <td className="py-1.5">
-                      <span className="font-semibold" style={{ color: t.type === 'BUY' ? 'var(--green)' : 'var(--red)' }}>{t.type}</span>
-                    </td>
-                    <td className="py-1.5 text-right font-mono-num" style={{ color: 'var(--t2)' }}>{t.entry}</td>
-                    <td className="py-1.5 text-right font-mono-num" style={{ color: 'var(--t2)' }}>{t.exit ?? '—'}</td>
-                    <td className="py-1.5 text-right font-mono-num" style={{ color: t.pnl > 0 ? 'var(--green)' : t.pnl < 0 ? 'var(--red)' : 'var(--t2)' }}>
-                      {t.pnl != null ? `${t.pnl > 0 ? '+' : ''}${t.pnl}` : '—'}
-                    </td>
-                    <td className="py-1.5 text-center">
-                      <span className="px-1.5 py-0.5 rounded text-xs font-semibold"
-                        style={t.exit != null
-                          ? { background: 'rgba(61,79,104,0.4)', color: 'var(--t2)' }
-                          : { background: 'rgba(0,200,240,0.12)', color: 'var(--acc)' }
-                        }>
-                        {t.exit != null ? 'Closed' : 'Open'}
-                      </span>
-                    </td>
-                  </tr>
-                ))
+          {/* Price chart */}
+          <div className="card p-3" style={{ height: 260 }}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold" style={{ color: 'var(--t1)' }}>{activePair} — Price</span>
+              {chartLoading && (
+                <div className="h-3 w-3 rounded-full border border-t-transparent animate-spin"
+                  style={{ borderColor: 'var(--acc)', borderTopColor: 'transparent' }} />
+              )}
+            </div>
+            <div style={{ height: 210 }}>
+              {chart && chart.length > 0
+                ? <MiniChart data={chart} pair={activePair} />
+                : <div className="h-full flex items-center justify-center text-xs" style={{ color: 'var(--t3)' }}>
+                    {chartLoading ? 'Loading chart…' : 'No chart data'}
+                  </div>
               }
-            </tbody>
-          </table>
+            </div>
+          </div>
+
+          {/* Quick stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <StatBox label="Entry"       value={signal?.entry       ?? '—'} color="var(--acc)" />
+            <StatBox label="Take Profit" value={signal?.takeProfit  ?? '—'} color="var(--green)" />
+            <StatBox label="Stop Loss"   value={signal?.stopLoss    ?? '—'} color="var(--red)" />
+            <StatBox label="Risk/Reward" value={signal?.riskReward  ?? '—'} color="var(--amber)" />
+          </div>
+
+          {/* Recent trades table */}
+          <div className="card p-3 flex-1 overflow-auto">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-semibold" style={{ color: 'var(--t1)' }}>Recent Trades</span>
+              <a href="/trades" className="text-xs" style={{ color: 'var(--acc)' }}>View all →</a>
+            </div>
+            <table className="w-full text-xs">
+              <thead>
+                <tr style={{ color: 'var(--t3)', borderBottom: '1px solid var(--border)' }}>
+                  <th className="text-left py-1 font-medium">Pair</th>
+                  <th className="text-left py-1 font-medium">Side</th>
+                  <th className="text-right py-1 font-medium">Entry</th>
+                  <th className="hidden sm:table-cell text-right py-1 font-medium">Exit</th>
+                  <th className="text-right py-1 font-medium">P&L</th>
+                  <th className="hidden sm:table-cell text-center py-1 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentTrades.length === 0
+                  ? <tr><td colSpan={6} className="text-center py-4" style={{ color: 'var(--t3)' }}>No trades yet</td></tr>
+                  : recentTrades.map((t: any) => (
+                    <tr key={t._id} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td className="py-1.5 font-medium" style={{ color: 'var(--t1)' }}>{t.pair}</td>
+                      <td className="py-1.5">
+                        <span className="font-semibold" style={{ color: t.type === 'BUY' ? 'var(--green)' : 'var(--red)' }}>{t.type}</span>
+                      </td>
+                      <td className="py-1.5 text-right font-mono-num" style={{ color: 'var(--t2)' }}>{t.entry}</td>
+                      <td className="hidden sm:table-cell py-1.5 text-right font-mono-num" style={{ color: 'var(--t2)' }}>{t.exit ?? '—'}</td>
+                      <td className="py-1.5 text-right font-mono-num" style={{ color: t.pnl > 0 ? 'var(--green)' : t.pnl < 0 ? 'var(--red)' : 'var(--t2)' }}>
+                        {t.pnl != null ? `${t.pnl > 0 ? '+' : ''}${t.pnl}` : '—'}
+                      </td>
+                      <td className="hidden sm:table-cell py-1.5 text-center">
+                        <span className="px-1.5 py-0.5 rounded text-xs font-semibold"
+                          style={t.exit != null
+                            ? { background: 'rgba(61,79,104,0.4)', color: 'var(--t2)' }
+                            : { background: 'rgba(0,200,240,0.12)', color: 'var(--acc)' }
+                          }>
+                          {t.exit != null ? 'Closed' : 'Open'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                }
+              </tbody>
+            </table>
+          </div>
+
         </div>
       </div>
 
-      {/* Right column — signal panel */}
-      <div className="flex flex-col gap-3 overflow-auto" style={{ width: 280, flexShrink: 0 }}>
+      {/* ── Right column — signal panel + news ─────────────────────────────── */}
+      <div className={`flex flex-col gap-3 lg:overflow-auto w-full lg:w-[272px] lg:flex-shrink-0 ${tab === 'chart' ? 'hidden lg:flex' : 'flex'}`}>
+
         {/* Signal card */}
         <div className="card p-4">
           <div className="flex items-center justify-between mb-3">
@@ -234,9 +262,9 @@ export default function Dashboard() {
               {/* Entry / TP / SL grid */}
               <div className="grid grid-cols-3 gap-2 mb-4">
                 {[
-                  { l: 'Entry', v: signal.entry, c: 'var(--acc)' },
+                  { l: 'Entry',       v: signal.entry,      c: 'var(--acc)' },
                   { l: 'Take Profit', v: signal.takeProfit, c: 'var(--green)' },
-                  { l: 'Stop Loss', v: signal.stopLoss, c: 'var(--red)' },
+                  { l: 'Stop Loss',   v: signal.stopLoss,   c: 'var(--red)' },
                 ].map(({ l, v, c }) => (
                   <div key={l} className="text-center p-2 rounded" style={{ background: 'var(--bg2)' }}>
                     <div className="text-xs font-semibold font-mono-num" style={{ color: c }}>{v ?? '—'}</div>
@@ -271,7 +299,7 @@ export default function Dashboard() {
         </div>
 
         {/* News snippets */}
-        <div className="card p-3 flex-1 overflow-auto">
+        <div className="card p-3">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--t3)' }}>News</span>
             <a href="/news" className="text-xs" style={{ color: 'var(--acc)' }}>More →</a>
@@ -296,6 +324,7 @@ export default function Dashboard() {
               })
           }
         </div>
+
       </div>
     </div>
   );

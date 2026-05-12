@@ -7,6 +7,7 @@ import { usePair } from '../../hooks/usePair';
 import { createChart, IChartApi, ISeriesApi } from 'lightweight-charts';
 import { calcRSI, calcMACD, calcEMA, calcBollingerBands } from '../../utils/indicators';
 import { C } from '../../utils/chartColors';
+import { getPriceFormat } from '../../utils/constants';
 
 type ChartType = 'candles' | 'bars' | 'line' | 'area';
 
@@ -173,22 +174,25 @@ export default function SignalsPage() {
       height: mainRef.current.clientHeight,
     });
 
+    const priceFormat = getPriceFormat(activePair);
+
     let priceSeries: ISeriesApi<any>;
     if (chartType === 'candles') {
       priceSeries = main.addCandlestickSeries({
         upColor: C.green, downColor: C.red,
         borderUpColor: C.green, borderDownColor: C.red,
         wickUpColor: C.green, wickDownColor: C.red,
+        priceFormat,
       });
       priceSeries.setData(ohlcv);
     } else if (chartType === 'line') {
-      priceSeries = main.addLineSeries({ color: C.acc, lineWidth: 1 });
+      priceSeries = main.addLineSeries({ color: C.acc, lineWidth: 1, priceFormat });
       priceSeries.setData(ohlcv.map((b: any) => ({ time: b.time, value: b.close })));
     } else if (chartType === 'area') {
-      priceSeries = main.addAreaSeries({ lineColor: C.acc, topColor: 'rgba(0,200,240,0.2)', bottomColor: 'rgba(0,0,0,0)', lineWidth: 1 });
+      priceSeries = main.addAreaSeries({ lineColor: C.acc, topColor: 'rgba(0,200,240,0.2)', bottomColor: 'rgba(0,0,0,0)', lineWidth: 1, priceFormat });
       priceSeries.setData(ohlcv.map((b: any) => ({ time: b.time, value: b.close })));
     } else {
-      priceSeries = main.addBarSeries({ upColor: C.green, downColor: C.red });
+      priceSeries = main.addBarSeries({ upColor: C.green, downColor: C.red, priceFormat });
       priceSeries.setData(ohlcv);
     }
 
@@ -279,7 +283,7 @@ export default function SignalsPage() {
       rsiChart?.remove();
       macdChart?.remove();
     };
-  }, [ohlcv, chartType, showEMA, showBB, signal]);
+  }, [ohlcv, chartType, showEMA, showBB, signal, activePair]);
 
   const CHART_TYPES: { key: ChartType; label: string }[] = [
     { key: 'candles', label: 'Candles' },
@@ -296,9 +300,9 @@ export default function SignalsPage() {
   const bearPct = signal?.bearScore ?? 50;
 
   return (
-    <div className="flex gap-3 h-full overflow-hidden">
+    <div className="flex flex-col lg:flex-row gap-3 min-h-full">
       {/* ── Chart area ──────────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-2 flex-1 min-w-0 overflow-auto">
+      <div className="flex flex-col gap-2 flex-1 min-w-0">
         {/* Toolbar */}
         <div className="card px-3 py-2 flex items-center gap-3 flex-wrap">
           <span className="text-xs font-semibold" style={{ color: 'var(--t2)' }}>Chart</span>
@@ -338,32 +342,32 @@ export default function SignalsPage() {
           )}
         </div>
 
-        <div className="card" style={{ height: 300 }}>
+        <div className="card" style={{ height: 280 }}>
           <div ref={mainRef} className="w-full h-full" />
         </div>
 
-        <div className="card" style={{ height: 100 }}>
+        <div className="card" style={{ height: 90 }}>
           <div className="flex items-center px-3 pt-2 pb-1 gap-2">
             <span className="text-xs font-semibold" style={{ color: 'var(--t3)' }}>RSI (14)</span>
             <span className="text-xs" style={{ color: 'var(--red)' }}>OB: 70</span>
             <span className="text-xs" style={{ color: 'var(--green)' }}>OS: 30</span>
           </div>
-          <div ref={rsiRef} style={{ height: 68 }} />
+          <div ref={rsiRef} style={{ height: 58 }} />
         </div>
 
-        <div className="card" style={{ height: 100 }}>
+        <div className="card" style={{ height: 90 }}>
           <div className="flex items-center px-3 pt-2 pb-1 gap-2">
             <span className="text-xs font-semibold" style={{ color: 'var(--t3)' }}>MACD (12,26,9)</span>
             <span className="text-xs" style={{ color: 'var(--acc)' }}>MACD</span>
             <span className="text-xs" style={{ color: 'var(--amber)' }}>Signal</span>
             <span className="text-xs" style={{ color: 'var(--green)' }}>Hist</span>
           </div>
-          <div ref={macdRef} style={{ height: 68 }} />
+          <div ref={macdRef} style={{ height: 58 }} />
         </div>
       </div>
 
       {/* ── Right sidebar ────────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-3 overflow-auto" style={{ width: 262, flexShrink: 0 }}>
+      <div className="flex flex-col gap-3 w-full lg:w-[262px] lg:flex-shrink-0">
 
         {/* Signal header card */}
         <div className="card p-3">

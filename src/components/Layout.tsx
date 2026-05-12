@@ -63,16 +63,6 @@ const NAV_ITEMS = [
     ),
   },
   {
-    href: '/rag',
-    label: 'AI Brain',
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z" />
-        <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z" />
-      </svg>
-    ),
-  },
-  {
     href: '/alerts',
     label: 'Alerts',
     icon: (
@@ -82,6 +72,12 @@ const NAV_ITEMS = [
     ),
   },
 ];
+
+const LOGOUT_ICON = (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
+  </svg>
+);
 
 function calcUpnl(pair: string, type: string, entry: number, price: number, size: number): number {
   const dir = type === 'BUY' ? 1 : -1;
@@ -176,6 +172,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   const pageLabel = NAV_ITEMS.find((n) => n.href === cleanPath)?.label ?? '';
+  const userInitial = (user?.name || user?.email || 'U')[0].toUpperCase();
 
   return (
     <div className="flex h-screen w-screen overflow-hidden" style={{ background: 'var(--bg)' }}>
@@ -185,9 +182,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         onDismiss={dismissTrade}
         isConfirming={isConfirming}
       />
-      {/* Sidebar */}
+
+      {/* ── Desktop sidebar (hidden on mobile) ───────────────────────────────── */}
       <aside
-        className="flex flex-col items-center py-4 gap-1 flex-shrink-0"
+        className="hidden md:flex flex-col items-center py-4 gap-1 flex-shrink-0"
         style={{ width: 54, background: 'var(--bg2)', borderRight: '1px solid var(--border)' }}
       >
         {/* Logo */}
@@ -199,7 +197,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </svg>
         </div>
 
-        {/* Nav items */}
         {NAV_ITEMS.map((item) => {
           const active = cleanPath === item.href;
           return (
@@ -209,8 +206,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               title={item.label}
               className="flex items-center justify-center rounded-lg transition-all duration-150"
               style={{
-                width: 38,
-                height: 38,
+                width: 38, height: 38,
                 color: active ? 'var(--acc)' : 'var(--t3)',
                 background: active ? 'rgba(0,200,240,0.1)' : 'transparent',
               }}
@@ -220,7 +216,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           );
         })}
 
-        {/* Spacer + logout */}
         <div className="flex-1" />
         <button
           onClick={handleLogout}
@@ -228,106 +223,153 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           className="flex items-center justify-center rounded-lg transition-all duration-150"
           style={{ width: 38, height: 38, color: 'var(--t3)' }}
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
-          </svg>
+          {LOGOUT_ICON}
         </button>
       </aside>
 
-      {/* Main column */}
-      <div className="flex flex-col flex-1 min-w-0">
-        {/* Topbar */}
-        <header
-          className="flex items-center gap-3 px-4 flex-shrink-0"
-          style={{ height: 48, background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}
-        >
-          {/* Page label */}
-          <span className="text-xs font-semibold tracking-widest uppercase" style={{ color: 'var(--t3)', width: 80, flexShrink: 0 }}>
-            {pageLabel}
-          </span>
+      {/* ── Main column ──────────────────────────────────────────────────────── */}
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 
-          {/* Pair tabs */}
-          <div className="flex gap-1">
-            {PAIRS.map((p) => (
-              <button
-                key={p}
-                onClick={() => setActivePair(p)}
-                className="pill text-xs"
-                style={
-                  activePair === p
-                    ? { background: 'var(--acc)', color: '#000', borderColor: 'var(--acc)', padding: '3px 10px', borderRadius: 20, border: '1px solid', fontWeight: 600, fontSize: 11 }
-                    : { background: 'transparent', color: 'var(--t2)', borderColor: 'var(--border2)', padding: '3px 10px', borderRadius: 20, border: '1px solid', fontWeight: 600, fontSize: 11, cursor: 'pointer' }
-                }
-              >
-                {p}
-              </button>
-            ))}
+        {/* ── Header ───────────────────────────────────────────────────────── */}
+        <header style={{ background: 'var(--bg2)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+
+          {/* Main header row */}
+          <div className="flex items-center gap-2 px-3 md:px-4" style={{ height: 48 }}>
+
+            {/* Page label — desktop only */}
+            <span className="hidden md:block text-xs font-semibold tracking-widest uppercase flex-shrink-0"
+              style={{ color: 'var(--t3)', width: 80 }}>
+              {pageLabel}
+            </span>
+
+            {/* Pair tabs — scrollable */}
+            <div className="flex gap-1 overflow-x-auto no-scrollbar flex-shrink-0">
+              {PAIRS.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setActivePair(p)}
+                  className="pill text-xs flex-shrink-0"
+                  style={
+                    activePair === p
+                      ? { background: 'var(--acc)', color: '#000', borderColor: 'var(--acc)', padding: '3px 8px', borderRadius: 20, border: '1px solid', fontWeight: 600, fontSize: 11 }
+                      : { background: 'transparent', color: 'var(--t2)', borderColor: 'var(--border2)', padding: '3px 8px', borderRadius: 20, border: '1px solid', fontWeight: 600, fontSize: 11, cursor: 'pointer' }
+                  }
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+
+            {/* TF buttons — desktop only (shown in sub-row on mobile) */}
+            <div className="hidden md:flex gap-1 ml-2">
+              {TIMEFRAMES.map((tf) => (
+                <button
+                  key={tf}
+                  onClick={() => setActiveTF(tf)}
+                  className="text-xs font-semibold rounded px-2 py-1 transition-all"
+                  style={
+                    activeTF === tf
+                      ? { background: 'rgba(0,200,240,0.15)', color: 'var(--acc)', border: '1px solid var(--acc)' }
+                      : { background: 'transparent', color: 'var(--t3)', border: '1px solid transparent' }
+                  }
+                >
+                  {tf}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex-1" />
+
+            {/* Simulation balance — desktop only */}
+            {user?.simulationBalance != null && (
+              <div className="hidden md:flex items-center gap-1.5 px-2 py-1 rounded"
+                style={{ background: 'var(--bg3)', border: '1px solid var(--border)' }}>
+                <span className="text-xs" style={{ color: 'var(--t3)' }}>Balance</span>
+                <span
+                  className="text-xs font-bold font-mono"
+                  style={{ color: user.simulationBalance >= 10000 ? 'var(--green)' : user.simulationBalance >= 5000 ? 'var(--amber)' : 'var(--red)' }}
+                >
+                  ${Number(user.simulationBalance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
+
+            {/* Floating PnL — desktop only */}
+            <div className="hidden md:block"><FloatingPnLBadge /></div>
+
+            {/* LIVE badge — desktop only */}
+            <div className="hidden md:flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full"
+                style={{ background: 'var(--green)', boxShadow: '0 0 6px var(--green)', animation: 'pulse-green 2s infinite' }} />
+              <span className="text-xs font-semibold" style={{ color: 'var(--green)' }}>LIVE</span>
+            </div>
+
+            {/* Clock — large screens only */}
+            <div className="hidden lg:block"><LiveClock /></div>
+
+            {/* User avatar */}
+            <div
+              className="flex items-center justify-center rounded-full text-xs font-bold ml-1 flex-shrink-0"
+              style={{ width: 28, height: 28, background: 'var(--acc)', color: '#000' }}
+              title={user?.name || user?.email}
+            >
+              {userInitial}
+            </div>
           </div>
 
-          {/* Timeframe buttons */}
-          <div className="flex gap-1 ml-2">
+          {/* TF sub-row — mobile only */}
+          <div className="flex md:hidden items-center gap-1 px-3 pb-2 overflow-x-auto no-scrollbar">
             {TIMEFRAMES.map((tf) => (
               <button
                 key={tf}
                 onClick={() => setActiveTF(tf)}
-                className="text-xs font-semibold rounded px-2 py-1 transition-all"
+                className="text-xs font-semibold rounded px-2.5 py-1 transition-all flex-shrink-0"
                 style={
                   activeTF === tf
                     ? { background: 'rgba(0,200,240,0.15)', color: 'var(--acc)', border: '1px solid var(--acc)' }
-                    : { background: 'transparent', color: 'var(--t3)', border: '1px solid transparent' }
+                    : { background: 'transparent', color: 'var(--t3)', border: '1px solid var(--border2)' }
                 }
               >
                 {tf}
               </button>
             ))}
           </div>
-
-          <div className="flex-1" />
-
-          {/* Simulation balance */}
-          {user?.simulationBalance != null && (
-            <div
-              className="flex items-center gap-1.5 px-2 py-1 rounded"
-              style={{ background: 'var(--bg3)', border: '1px solid var(--border)' }}
-            >
-              <span className="text-xs" style={{ color: 'var(--t3)' }}>Balance</span>
-              <span
-                className="text-xs font-bold font-mono"
-                style={{ color: user.simulationBalance >= 10000 ? 'var(--green)' : user.simulationBalance >= 5000 ? 'var(--amber)' : 'var(--red)' }}
-              >
-                ${Number(user.simulationBalance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
-            </div>
-          )}
-
-          {/* Floating P&L (open positions) */}
-          <FloatingPnLBadge />
-
-          {/* Live badge */}
-          <div className="flex items-center gap-1.5">
-            <span
-              className="h-2 w-2 rounded-full"
-              style={{ background: 'var(--green)', boxShadow: '0 0 6px var(--green)', animation: 'pulse-green 2s infinite' }}
-            />
-            <span className="text-xs font-semibold" style={{ color: 'var(--green)' }}>LIVE</span>
-          </div>
-
-          <LiveClock />
-
-          {/* User */}
-          <div
-            className="flex items-center justify-center rounded-full text-xs font-bold ml-2"
-            style={{ width: 28, height: 28, background: 'var(--acc)', color: '#000' }}
-            title={user?.name || user?.email}
-          >
-            {(user?.name || user?.email || 'U')[0].toUpperCase()}
-          </div>
         </header>
 
-        {/* Page content */}
-        <main className="flex-1 overflow-auto p-4" style={{ background: 'var(--bg)' }}>
+        {/* ── Page content ─────────────────────────────────────────────────── */}
+        <main className="flex-1 overflow-auto p-2 md:p-4 pb-16 md:pb-4" style={{ background: 'var(--bg)' }}>
           {children}
         </main>
+
+        {/* ── Mobile bottom nav (hidden on desktop) ─────────────────────────── */}
+        <nav
+          className="flex md:hidden items-center flex-shrink-0"
+          style={{ height: 56, background: 'var(--bg2)', borderTop: '1px solid var(--border)' }}
+        >
+          {NAV_ITEMS.map((item) => {
+            const active = cleanPath === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-all"
+                style={{ color: active ? 'var(--acc)' : 'var(--t3)' }}
+              >
+                {item.icon}
+                <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.03em' }}>{item.label}</span>
+              </Link>
+            );
+          })}
+          <button
+            onClick={handleLogout}
+            className="flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-all"
+            style={{ color: 'var(--t3)' }}
+          >
+            {LOGOUT_ICON}
+            <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.03em' }}>Logout</span>
+          </button>
+        </nav>
+
       </div>
     </div>
   );

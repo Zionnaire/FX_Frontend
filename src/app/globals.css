@@ -53,6 +53,10 @@ button, input, select, textarea { font: inherit; }
 ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--acc); }
 
+/* Hide scrollbar for tab strips / horizontal nav */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
 /* Animations */
 @keyframes blink {
   0%, 100% { opacity: 1; }

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { createChart } from 'lightweight-charts';
 import { C } from '../utils/chartColors';
+import { getPriceFormat } from '../utils/constants';
 
 interface Bar {
   time: number;
@@ -15,9 +16,10 @@ interface Bar {
 interface Props {
   data: Bar[];
   height?: number;
+  pair?: string;
 }
 
-export default function PriceChart({ data, height = 320 }: Props) {
+export default function PriceChart({ data, height = 320, pair = '' }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -37,6 +39,7 @@ export default function PriceChart({ data, height = 320 }: Props) {
       upColor: C.green, downColor: C.red,
       borderUpColor: C.green, borderDownColor: C.red,
       wickUpColor: C.green, wickDownColor: C.red,
+      priceFormat: getPriceFormat(pair),
     });
 
     if (data.length > 0) {
@@ -55,7 +58,7 @@ export default function PriceChart({ data, height = 320 }: Props) {
       window.removeEventListener('resize', onResize);
       chart.remove();
     };
-  }, [data, height]);
+  }, [data, height, pair]);
 
   if (data.length === 0) {
     return (
