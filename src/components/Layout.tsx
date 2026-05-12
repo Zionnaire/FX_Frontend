@@ -71,6 +71,17 @@ const NAV_ITEMS = [
       </svg>
     ),
   },
+  {
+    href: '/rag',
+    label: 'AI Brain',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 2a4 4 0 0 1 4 4c0 1.5-.8 2.8-2 3.5V11h1a3 3 0 0 1 3 3v1a3 3 0 0 1-3 3h-1v.5a2.5 2.5 0 0 1-5 0V18H8a3 3 0 0 1-3-3v-1a3 3 0 0 1 3-3h1V9.5C7.8 8.8 7 7.5 7 6a4 4 0 0 1 4-4h1Z" />
+        <circle cx="9.5" cy="14.5" r="0.5" fill="currentColor" />
+        <circle cx="14.5" cy="14.5" r="0.5" fill="currentColor" />
+      </svg>
+    ),
+  },
 ];
 
 const LOGOUT_ICON = (
