@@ -114,6 +114,209 @@ function LevelRow({
   );
 }
 
+// ─── Session helpers ──────────────────────────────────────────────────────────
+
+function getSessionRating(pair: string, utcHour: number): 'PRIME' | 'ACTIVE' | 'AVOID' {
+  switch (pair) {
+    case 'XAU/USD':
+      if ((utcHour >= 7 && utcHour < 12) || (utcHour >= 13 && utcHour < 16)) return 'PRIME';
+      if (utcHour >= 12 && utcHour < 20) return 'ACTIVE';
+      return 'AVOID';
+    case 'GBP/USD':
+      if (utcHour >= 13 && utcHour < 17) return 'PRIME';
+      if (utcHour >= 7 && utcHour < 17)  return 'ACTIVE';
+      return 'AVOID';
+    case 'EUR/USD':
+      if (utcHour >= 13 && utcHour < 17) return 'PRIME';
+      if (utcHour >= 7 && utcHour < 17)  return 'ACTIVE';
+      return 'AVOID';
+    case 'USD/JPY':
+      if (utcHour >= 13 && utcHour < 17) return 'PRIME';
+      if ((utcHour >= 7 && utcHour < 17) || utcHour >= 22 || utcHour < 7) return 'ACTIVE';
+      return 'AVOID';
+    default:
+      return 'ACTIVE';
+  }
+}
+
+function getNextActiveHour(pair: string, utcHour: number): { label: string; hoursAway: number } {
+  const windows: Record<string, number[]> = {
+    'GBP/USD': [7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+    'EUR/USD': [7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+    'XAU/USD': [7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 19],
+    'USD/JPY': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 22, 23],
+  };
+  const active = windows[pair] ?? windows['GBP/USD'];
+  for (let h = 1; h <= 24; h++) {
+    const next = (utcHour + h) % 24;
+    if (active.includes(next)) {
+      return { label: `${String(next).padStart(2, '0')}:00 UTC`, hoursAway: h };
+    }
+  }
+  return { label: '07:00 UTC', hoursAway: 0 };
+}
+
+function SessionStatusCard({ pair }: { pair: string }) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const utcHour   = now.getUTCHours();
+  const utcMin    = now.getUTCMinutes();
+  const rating    = getSessionRating(pair, utcHour);
+  const nextInfo  = rating === 'AVOID' ? getNextActiveHour(pair, utcHour) : null;
+
+  const ratingStyle = {
+    PRIME:  { bg: 'rgba(0,230,118,0.12)',  fg: 'var(--green)', label: 'PRIME — peak liquidity, best setups' },
+    ACTIVE: { bg: 'rgba(0,200,240,0.12)',  fg: 'var(--acc)',   label: 'ACTIVE — tradeable conditions' },
+    AVOID:  { bg: 'rgba(255,56,86,0.10)',  fg: 'var(--red)',   label: 'AVOID — low liquidity, stay out' },
+  }[rating];
+
+  const sessionName =
+    (utcHour >= 22 || utcHour < 7)  ? 'Asian Session'      :
+    (utcHour >= 7  && utcHour < 12) ? 'London Open'        :
+    (utcHour >= 12 && utcHour < 17) ? 'London–NY Overlap'  :
+                                       'New York Session';
+
+  return (
+    <div className="card p-3">
+      <div className="text-xs font-semibold uppercase mb-2" style={{ color: 'var(--t3)' }}>
+        Market Session
+      </div>
+      <div className="flex items-center gap-2 mb-1.5">
+        <span
+          className="text-xs px-2 py-0.5 rounded-full font-bold"
+          style={{ background: ratingStyle.bg, color: ratingStyle.fg }}
+        >
+          {rating}
+        </span>
+        <span className="text-xs" style={{ color: 'var(--t2)' }}>{sessionName}</span>
+      </div>
+      <p className="text-xs mb-1.5" style={{ color: 'var(--t3)' }}>{ratingStyle.label}</p>
+      <div className="flex items-center justify-between text-xs">
+        <span style={{ color: 'var(--t3)' }}>UTC {String(utcHour).padStart(2,'0')}:{String(utcMin).padStart(2,'0')}</span>
+        {nextInfo && (
+          <span style={{ color: 'var(--acc)' }}>
+            Active in ~{nextInfo.hoursAway}h → {nextInfo.label}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Confluence checklist ─────────────────────────────────────────────────────
+
+function ConfluenceChecklist({ signal }: { signal: any }) {
+  if (!signal?.indicators) return null;
+  const ind = signal.indicators;
+  const dir = signal.signal as 'BUY' | 'SELL' | 'HOLD';
+  const price = signal.entry ?? 0;
+  const htf = (signal.htfBias ?? '').toLowerCase();
+
+  const checks: { label: string; pass: boolean | null; value?: string }[] = [
+    {
+      label: 'Daily trend aligned',
+      pass: dir === 'HOLD' ? null
+          : dir === 'BUY'  ? htf.includes('bullish')
+          : htf.includes('bearish'),
+      value: htf ? (htf.includes('bullish') ? 'Bullish' : htf.includes('bearish') ? 'Bearish' : '—') : '—',
+    },
+    {
+      label: 'Price above EMA20 & EMA50 (BUY) / below (SELL)',
+      pass: dir === 'HOLD' ? null
+          : dir === 'BUY'  ? price > ind.ema20 && price > ind.ema50
+          : price < ind.ema20 && price < ind.ema50,
+      value: ind.ema20 ? `EMA20 ${ind.ema20.toFixed(5)}` : undefined,
+    },
+    {
+      label: `RSI supports direction`,
+      pass: dir === 'HOLD' ? null
+          : dir === 'BUY'  ? ind.rsi > 50 && ind.rsi < 70
+          : ind.rsi < 50 && ind.rsi > 30,
+      value: ind.rsi ? `RSI ${ind.rsi.toFixed(1)}` : undefined,
+    },
+    {
+      label: 'MACD histogram aligned',
+      pass: dir === 'HOLD' ? null
+          : dir === 'BUY'  ? ind.macd?.histogram > 0
+          : ind.macd?.histogram < 0,
+      value: ind.macd?.histogram != null ? ind.macd.histogram.toFixed(5) : undefined,
+    },
+    {
+      label: 'ADX ≥ 25 (trending, not ranging)',
+      pass: (ind.adx ?? 0) >= 25,
+      value: ind.adx ? `ADX ${ind.adx.toFixed(1)}` : undefined,
+    },
+    {
+      label: 'Stochastic not at opposing extreme',
+      pass: dir === 'HOLD' ? (ind.stoch?.k ?? 50) > 20 && (ind.stoch?.k ?? 50) < 80
+          : dir === 'BUY'  ? (ind.stoch?.k ?? 50) < 80
+          : (ind.stoch?.k ?? 50) > 20,
+      value: ind.stoch?.k != null ? `K ${ind.stoch.k.toFixed(1)}` : undefined,
+    },
+    {
+      label: 'Candlestick pattern detected',
+      pass: Array.isArray(signal.patterns) && signal.patterns.length > 0,
+      value: signal.patterns?.length > 0 ? signal.patterns[0] : 'None',
+    },
+    {
+      label: 'BB / price structure supports entry',
+      pass: dir === 'HOLD' ? null
+          : dir === 'BUY'  ? price > ind.bb?.mid
+          : price < ind.bb?.mid,
+      value: ind.bb?.mid ? `Mid ${ind.bb.mid.toFixed(5)}` : undefined,
+    },
+  ];
+
+  const passing = checks.filter(c => c.pass === true).length;
+  const total = checks.length;
+  const quality =
+    passing >= 6 ? { label: 'A+ Setup', color: 'var(--green)' } :
+    passing >= 4 ? { label: 'B Setup',  color: 'var(--amber)' } :
+                   { label: 'Not ready', color: 'var(--red)'  };
+
+  return (
+    <div className="card p-3">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold uppercase" style={{ color: 'var(--t3)' }}>
+          Confluence ({passing}/{total})
+        </span>
+        <span className="text-xs font-bold" style={{ color: quality.color }}>
+          {quality.label}
+        </span>
+      </div>
+      <div className="space-y-1">
+        {checks.map((c, i) => (
+          <div key={i} className="flex items-start gap-1.5 text-xs">
+            <span
+              className="flex-shrink-0 mt-0.5 font-bold"
+              style={{ color: c.pass === true ? 'var(--green)' : c.pass === false ? 'var(--red)' : 'var(--t3)' }}
+            >
+              {c.pass === true ? '✓' : c.pass === false ? '✗' : '·'}
+            </span>
+            <span style={{ color: c.pass === true ? 'var(--t1)' : c.pass === false ? 'var(--t3)' : 'var(--t3)' }}>
+              {c.label}
+            </span>
+            {c.value && (
+              <span className="ml-auto font-mono-num flex-shrink-0" style={{ color: 'var(--t2)' }}>
+                {c.value}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+      {passing < 4 && (
+        <p className="text-xs mt-2 pt-2" style={{ color: 'var(--amber)', borderTop: '1px solid var(--border)' }}>
+          Need {4 - passing} more indicator{4 - passing > 1 ? 's' : ''} to align for a tradeable setup.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── Build copy text ──────────────────────────────────────────────────────────
 function buildCopyText(signal: any, pair: string, tf: string): string {
   if (!signal) return '';
@@ -135,7 +338,7 @@ function buildCopyText(signal: any, pair: string, tf: string): string {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function SignalsPage() {
-  const { signal, loading: sigLoading, refetch } = useSignal();
+  const { signal, loading: sigLoading, error: sigError, refetch } = useSignal();
   const { chart: ohlcv, loading: chartLoading } = useChart();
   const { activePair, activeTF } = usePair();
 
@@ -406,6 +609,9 @@ export default function SignalsPage() {
       {/* ── Right sidebar ────────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-3 w-full lg:w-[262px] lg:flex-shrink-0">
 
+        {/* Session status — always visible */}
+        <SessionStatusCard pair={activePair} />
+
         {/* Signal header card */}
         <div className="card p-3">
           <div className="flex items-center justify-between mb-2">
@@ -414,15 +620,29 @@ export default function SignalsPage() {
             </span>
             <button
               onClick={refetch}
+              disabled={sigLoading}
               className="text-xs px-2 py-0.5 rounded transition-all"
-              style={{ background: 'var(--bg2)', color: 'var(--t3)', border: '1px solid var(--border2)' }}
+              style={{ background: 'var(--bg2)', color: sigLoading ? 'var(--t3)' : 'var(--acc)', border: '1px solid var(--border2)' }}
               title="Refresh signal"
             >
-              ↻
+              {sigLoading ? '…' : '↻ Refresh'}
             </button>
           </div>
 
-          {signal ? (
+          {sigError && !signal && (
+            <div className="text-xs p-2 rounded mb-2" style={{ background: 'rgba(255,56,86,0.1)', color: 'var(--red)', border: '1px solid rgba(255,56,86,0.3)' }}>
+              {sigError}
+            </div>
+          )}
+
+          {sigLoading && !signal ? (
+            <div className="space-y-2 animate-pulse py-2">
+              {[70, 50, 80].map((w, i) => (
+                <div key={i} className="h-3 rounded" style={{ width: `${w}%`, background: 'var(--bg4)' }} />
+              ))}
+              <p className="text-xs text-center pt-1" style={{ color: 'var(--t3)' }}>Analysing market…</p>
+            </div>
+          ) : signal ? (
             <>
               {/* Direction + badges */}
               <div className="flex items-center gap-2 mb-3 flex-wrap">
@@ -438,7 +658,9 @@ export default function SignalsPage() {
                 </span>
                 <div className="flex-1">
                   <div className="text-base font-bold" style={{ color: 'var(--t1)' }}>{signal.confidence}%</div>
-                  <div className="text-xs" style={{ color: 'var(--t3)' }}>confidence</div>
+                  <div className="text-xs" style={{ color: 'var(--t3)' }}>
+                    {signal.signal === 'HOLD' ? 'not tradeable yet' : 'confidence'}
+                  </div>
                 </div>
                 <div className="flex flex-col gap-1 items-end">
                   <SessionBadge rating={signal.sessionRating} />
@@ -446,11 +668,20 @@ export default function SignalsPage() {
                 </div>
               </div>
 
+              {/* When HOLD: show reasoning front-and-center */}
+              {signal.signal === 'HOLD' && signal.reasoning && (
+                <div className="text-xs leading-relaxed p-2 rounded mb-3"
+                  style={{ background: 'rgba(255,183,0,0.08)', color: 'var(--t1)', border: '1px solid rgba(255,183,0,0.25)' }}>
+                  <div className="font-semibold mb-1" style={{ color: 'var(--amber)' }}>Why no trade yet:</div>
+                  {signal.reasoning}
+                </div>
+              )}
+
               {/* Confluence meter */}
               <ConfluenceMeter score={signal.confluenceScore} />
 
               {/* Validity */}
-              {validity && (
+              {validity && signal.signal !== 'HOLD' && (
                 <div className="flex justify-between items-center mt-2">
                   <span className="text-xs" style={{ color: 'var(--t3)' }}>Valid for</span>
                   <span className="text-xs font-semibold font-mono-num" style={{ color: validity === 'Expired' ? 'var(--red)' : 'var(--acc)' }}>
@@ -461,13 +692,16 @@ export default function SignalsPage() {
             </>
           ) : (
             <div className="text-xs text-center py-4" style={{ color: 'var(--t3)' }}>
-              {sigLoading ? 'Analysing...' : 'No signal'}
+              {sigError ? 'Retry ↻ above' : 'Click Refresh to analyse'}
             </div>
           )}
         </div>
 
-        {/* Trade levels card */}
-        {signal && (
+        {/* Confluence breakdown — always shown when signal exists */}
+        {signal && <ConfluenceChecklist signal={signal} />}
+
+        {/* Trade levels card — only for actionable BUY/SELL signals */}
+        {signal && signal.signal !== 'HOLD' && (
           <div className="card p-3">
             <div className="text-xs font-semibold uppercase mb-1" style={{ color: 'var(--t3)' }}>Trade Levels</div>
             <LevelRow
@@ -506,8 +740,8 @@ export default function SignalsPage() {
           </div>
         )}
 
-        {/* Market bias card */}
-        {signal && (signal.htfBias || signal.bullScore != null) && (
+        {/* Market bias card — useful for BUY/SELL, optional for HOLD */}
+        {signal && signal.signal !== 'HOLD' && (signal.htfBias || signal.bullScore != null) && (
           <div className="card p-3">
             <div className="text-xs font-semibold uppercase mb-2" style={{ color: 'var(--t3)' }}>Market Bias</div>
 
@@ -531,8 +765,8 @@ export default function SignalsPage() {
           </div>
         )}
 
-        {/* Key risks */}
-        {signal?.keyRisks?.length > 0 && (
+        {/* Key risks — only for actionable signals */}
+        {signal?.signal !== 'HOLD' && signal?.keyRisks?.length > 0 && (
           <div className="card p-3">
             <div className="text-xs font-semibold uppercase mb-2" style={{ color: 'var(--t3)' }}>Key Risks</div>
             <ul className="flex flex-col gap-1">
@@ -546,8 +780,8 @@ export default function SignalsPage() {
           </div>
         )}
 
-        {/* AI Reasoning */}
-        {signal?.reasoning && (
+        {/* AI Reasoning — only for BUY/SELL (HOLD shows reasoning inline in the signal card) */}
+        {signal?.reasoning && signal.signal !== 'HOLD' && (
           <div className="card p-3">
             <div className="text-xs font-semibold uppercase mb-2" style={{ color: 'var(--t3)' }}>AI Analysis</div>
             <p className="text-xs leading-relaxed" style={{ color: 'var(--t2)' }}>{signal.reasoning}</p>

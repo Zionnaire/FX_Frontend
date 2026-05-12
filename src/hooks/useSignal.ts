@@ -12,11 +12,16 @@ export function useSignal() {
 
   const fetchSignal = async () => {
     setLoading(true);
+    setError(null);
     try {
       const response = await signalService.getSignal(activePair, activeTF);
       setSignal(response.data.data);
-    } catch (err) {
-      setError('Failed to load signal');
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Failed to load signal';
+      setError(msg);
     } finally {
       setLoading(false);
     }
