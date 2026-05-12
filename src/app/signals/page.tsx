@@ -740,8 +740,8 @@ export default function SignalsPage() {
           </div>
         )}
 
-        {/* Market bias card — useful for BUY/SELL, optional for HOLD */}
-        {signal && signal.signal !== 'HOLD' && (signal.htfBias || signal.bullScore != null) && (
+        {/* Market bias card — always shown so the AI's directional thinking is visible */}
+        {signal && (signal.htfBias || signal.bullScore != null) && (
           <div className="card p-3">
             <div className="text-xs font-semibold uppercase mb-2" style={{ color: 'var(--t3)' }}>Market Bias</div>
 
@@ -765,8 +765,8 @@ export default function SignalsPage() {
           </div>
         )}
 
-        {/* Key risks — only for actionable signals */}
-        {signal?.signal !== 'HOLD' && signal?.keyRisks?.length > 0 && (
+        {/* Key risks — always shown so user knows what's in the way */}
+        {signal?.keyRisks?.length > 0 && (
           <div className="card p-3">
             <div className="text-xs font-semibold uppercase mb-2" style={{ color: 'var(--t3)' }}>Key Risks</div>
             <ul className="flex flex-col gap-1">
@@ -780,8 +780,8 @@ export default function SignalsPage() {
           </div>
         )}
 
-        {/* AI Reasoning — only for BUY/SELL (HOLD shows reasoning inline in the signal card) */}
-        {signal?.reasoning && signal.signal !== 'HOLD' && (
+        {/* AI Reasoning — always shown; for HOLD it also appears inline above but full text goes here */}
+        {signal?.reasoning && (
           <div className="card p-3">
             <div className="text-xs font-semibold uppercase mb-2" style={{ color: 'var(--t3)' }}>AI Analysis</div>
             <p className="text-xs leading-relaxed" style={{ color: 'var(--t2)' }}>{signal.reasoning}</p>
