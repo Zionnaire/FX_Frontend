@@ -63,6 +63,24 @@ button, input, select, textarea { font: inherit; }
   50%       { opacity: 0; }
 }
 
+@keyframes flash-up {
+  0%   { background: rgba(0,200,240,0.35); }
+  100% { background: transparent; }
+}
+
+@keyframes flash-down {
+  0%   { background: rgba(255,56,86,0.35); }
+  100% { background: transparent; }
+}
+
+@keyframes ptr-spin {
+  to { transform: rotate(360deg); }
+}
+
+.flash-up        { animation: flash-up   0.6s ease forwards; }
+.flash-down      { animation: flash-down 0.6s ease forwards; }
+.animate-ptr-spin { animation: ptr-spin  0.8s linear infinite; }
+
 @keyframes pulse-green {
   0%, 100% { box-shadow: 0 0 0 0 rgba(0,230,118,0.4); }
   50%       { box-shadow: 0 0 0 6px rgba(0,230,118,0); }

@@ -4,10 +4,12 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSignal } from '../../hooks/useSignal';
 import { useChart } from '../../hooks/useChart';
 import { usePair } from '../../hooks/usePair';
+import { useRealtimePrice } from '../../hooks/useRealtimePrice';
 import { createChart, IChartApi, ISeriesApi } from 'lightweight-charts';
 import { calcRSI, calcMACD, calcEMA, calcBollingerBands } from '../../utils/indicators';
 import { C } from '../../utils/chartColors';
 import { getPriceFormat } from '../../utils/constants';
+import PullToRefresh from '../../components/PullToRefresh';
 
 type ChartType = 'candles' | 'bars' | 'line' | 'area';
 
@@ -137,9 +139,13 @@ export default function SignalsPage() {
   const { chart: ohlcv, loading: chartLoading } = useChart();
   const { activePair, activeTF } = usePair();
 
-  const mainRef = useRef<HTMLDivElement>(null);
-  const rsiRef  = useRef<HTMLDivElement>(null);
-  const macdRef = useRef<HTMLDivElement>(null);
+  const { price: livePrice } = useRealtimePrice(activePair);
+
+  const mainRef        = useRef<HTMLDivElement>(null);
+  const rsiRef         = useRef<HTMLDivElement>(null);
+  const macdRef        = useRef<HTMLDivElement>(null);
+  const priceSeriesRef = useRef<ISeriesApi<any> | null>(null);
+  const lastBarRef     = useRef<any>(null);
 
   const [chartType, setChartType] = useState<ChartType>('candles');
   const [showEMA,   setShowEMA]   = useState(true);
@@ -195,6 +201,9 @@ export default function SignalsPage() {
       priceSeries = main.addBarSeries({ upColor: C.green, downColor: C.red, priceFormat });
       priceSeries.setData(ohlcv);
     }
+
+    priceSeriesRef.current = priceSeries;
+    lastBarRef.current = ohlcv[ohlcv.length - 1];
 
     if (showEMA) {
       ([20, 50, 200] as const).forEach((p, idx) => {
@@ -279,11 +288,33 @@ export default function SignalsPage() {
 
     return () => {
       window.removeEventListener('resize', onResize);
+      priceSeriesRef.current = null;
       main.remove();
       rsiChart?.remove();
       macdChart?.remove();
     };
   }, [ohlcv, chartType, showEMA, showBB, signal, activePair]);
+
+  // Live candle update on the signals chart
+  useEffect(() => {
+    if (!priceSeriesRef.current || livePrice == null || !lastBarRef.current) return;
+    const last = lastBarRef.current;
+    try {
+      if (chartType === 'candles' || chartType === 'bars') {
+        priceSeriesRef.current.update({
+          time:  last.time,
+          open:  last.open,
+          high:  Math.max(last.high, livePrice),
+          low:   Math.min(last.low,  livePrice),
+          close: livePrice,
+        });
+      } else {
+        priceSeriesRef.current.update({ time: last.time, value: livePrice });
+      }
+    } catch {
+      // chart may have been destroyed
+    }
+  }, [livePrice, chartType]);
 
   const CHART_TYPES: { key: ChartType; label: string }[] = [
     { key: 'candles', label: 'Candles' },
@@ -299,7 +330,13 @@ export default function SignalsPage() {
   const bullPct = signal?.bullScore ?? 50;
   const bearPct = signal?.bearScore ?? 50;
 
+  const handleRefresh = useCallback(async () => {
+    refetch();
+    await new Promise((res) => setTimeout(res, 1500));
+  }, [refetch]);
+
   return (
+    <PullToRefresh onRefresh={handleRefresh}>
     <div className="flex flex-col lg:flex-row gap-3 min-h-full">
       {/* ── Chart area ──────────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-2 flex-1 min-w-0">
@@ -533,5 +570,6 @@ export default function SignalsPage() {
 
       </div>
     </div>
+    </PullToRefresh>
   );
 }
