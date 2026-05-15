@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSignal } from '../../hooks/useSignal';
 import { useChart } from '../../hooks/useChart';
 import { usePair } from '../../hooks/usePair';
+import { useAuth } from '../../hooks/useAuth';
 import { useRealtimePrice } from '../../hooks/useRealtimePrice';
 import { createChart, IChartApi, ISeriesApi } from 'lightweight-charts';
 import { calcRSI, calcMACD, calcEMA, calcBollingerBands } from '../../utils/indicators';
@@ -34,11 +35,13 @@ function useCountdown(target?: string | Date | null): string {
 }
 
 // ─── Confluence meter ─────────────────────────────────────────────────────────
-function ConfluenceMeter({ score }: { score?: number }) {
+function ConfluenceMeter({ score, tradingStyle = 'swing' }: { score?: number; tradingStyle?: 'scalp' | 'swing' }) {
   const total = 8;
   const s = score ?? 0;
-  const color = s >= 6 ? 'var(--green)' : s >= 4 ? 'var(--amber)' : 'var(--red)';
-  const label = s >= 6 ? 'A+ Setup' : s >= 4 ? 'B Setup' : 'Weak';
+  const aMin = tradingStyle === 'scalp' ? 5 : 6;
+  const bMin = tradingStyle === 'scalp' ? 3 : 4;
+  const color = s >= aMin ? 'var(--green)' : s >= bMin ? 'var(--amber)' : 'var(--red)';
+  const label = s >= aMin ? 'A+ Setup' : s >= bMin ? 'B Setup' : 'Weak';
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
@@ -209,12 +212,13 @@ function SessionStatusCard({ pair }: { pair: string }) {
 
 // ─── Confluence checklist ─────────────────────────────────────────────────────
 
-function ConfluenceChecklist({ signal }: { signal: any }) {
+function ConfluenceChecklist({ signal, tradingStyle }: { signal: any; tradingStyle: 'scalp' | 'swing' }) {
   if (!signal?.indicators) return null;
   const ind = signal.indicators;
   const dir = signal.signal as 'BUY' | 'SELL' | 'HOLD';
   const price = signal.entry ?? 0;
   const htf = (signal.htfBias ?? '').toLowerCase();
+  const adxThreshold = tradingStyle === 'scalp' ? 15 : 25;
 
   const checks: { label: string; pass: boolean | null; value?: string }[] = [
     {
@@ -246,8 +250,8 @@ function ConfluenceChecklist({ signal }: { signal: any }) {
       value: ind.macd?.histogram != null ? ind.macd.histogram.toFixed(5) : undefined,
     },
     {
-      label: 'ADX ≥ 25 (trending, not ranging)',
-      pass: (ind.adx ?? 0) >= 25,
+      label: `ADX ≥ ${adxThreshold} (${tradingStyle === 'scalp' ? 'momentum' : 'trending'})`,
+      pass: (ind.adx ?? 0) >= adxThreshold,
       value: ind.adx ? `ADX ${ind.adx.toFixed(1)}` : undefined,
     },
     {
@@ -273,10 +277,12 @@ function ConfluenceChecklist({ signal }: { signal: any }) {
 
   const passing = checks.filter(c => c.pass === true).length;
   const total = checks.length;
+  const aMin = tradingStyle === 'scalp' ? 5 : 6;
+  const bMin = tradingStyle === 'scalp' ? 3 : 4;
   const quality =
-    passing >= 6 ? { label: 'A+ Setup', color: 'var(--green)' } :
-    passing >= 4 ? { label: 'B Setup',  color: 'var(--amber)' } :
-                   { label: 'Not ready', color: 'var(--red)'  };
+    passing >= aMin ? { label: 'A+ Setup', color: 'var(--green)' } :
+    passing >= bMin ? { label: 'B Setup',  color: 'var(--amber)' } :
+                      { label: 'Not ready', color: 'var(--red)'  };
 
   return (
     <div className="card p-3">
@@ -308,10 +314,109 @@ function ConfluenceChecklist({ signal }: { signal: any }) {
           </div>
         ))}
       </div>
-      {passing < 4 && (
+      {passing < bMin && (
         <p className="text-xs mt-2 pt-2" style={{ color: 'var(--amber)', borderTop: '1px solid var(--border)' }}>
-          Need {4 - passing} more indicator{4 - passing > 1 ? 's' : ''} to align for a tradeable setup.
+          Need {bMin - passing} more indicator{bMin - passing > 1 ? 's' : ''} to align for a {tradingStyle} setup.
         </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Position size calculator ─────────────────────────────────────────────────
+// Based on: Lot = (Balance × Risk%) / (SL_pips × PipValuePerLot)
+// Pip value per standard lot: GBP/USD=10, EUR/USD=10, XAU/USD=10, USD/JPY≈9.30
+
+function calcLotSize(pair: string, balance: number, riskPct: number, slPips: number): string {
+  if (slPips <= 0 || balance <= 0) return '—';
+  const riskUSD = balance * (riskPct / 100);
+  const pipVal = pair === 'XAU/USD' ? 10 : pair === 'USD/JPY' ? 9.3 : 10;
+  const raw = riskUSD / (slPips * pipVal);
+  // Round down to nearest 0.01
+  const lots = Math.floor(raw * 100) / 100;
+  return lots < 0.01 ? '< 0.01' : lots.toFixed(2);
+}
+
+function PositionSizeCard({
+  signal, pair, balance,
+}: { signal: any; pair: string; balance: number }) {
+  const [riskPct, setRiskPct] = useState(1);
+  if (!signal || signal.signal === 'HOLD' || !signal.pipsToSL) return null;
+
+  const lots   = calcLotSize(pair, balance, riskPct, signal.pipsToSL);
+  const riskUSD = (balance * riskPct / 100).toFixed(2);
+  const profitUSD = signal.pipsToTP && signal.pipsToSL > 0
+    ? ((balance * riskPct / 100) * (signal.pipsToTP / signal.pipsToSL)).toFixed(2)
+    : '—';
+
+  // Dynamic spread threshold (Demos & Goodhart): high ATR → spreads widen → need larger TP buffer
+  const spreadPips = pair === 'XAU/USD' ? 25 : pair === 'USD/JPY' ? 1.2 : pair === 'GBP/USD' ? 1.5 : 1.0;
+  const atrRaw = (signal.indicators?.atr ?? 0) as number;
+  const pipMult = pair === 'USD/JPY' ? 100 : pair === 'XAU/USD' ? 10 : 10000;
+  const atrPips = atrRaw * pipMult;
+  // multiplier scales from 3 (calm) to 6 (volatile) based on ATR vs spread ratio
+  const spreadMultiplier = atrPips > 0 ? Math.min(6, Math.max(3, atrPips / spreadPips)) : 3;
+  const spreadWarning = signal.pipsToTP && signal.pipsToTP < spreadPips * spreadMultiplier;
+
+  return (
+    <div className="card p-3">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold uppercase" style={{ color: 'var(--t3)' }}>
+          Position Calculator
+        </span>
+        <span className="text-xs" style={{ color: 'var(--t3)' }}>
+          Bal: ${balance.toLocaleString()}
+        </span>
+      </div>
+
+      {/* Risk selector */}
+      <div className="flex gap-1 mb-3">
+        {[0.5, 1, 2].map((r) => (
+          <button
+            key={r}
+            onClick={() => setRiskPct(r)}
+            className="flex-1 text-xs py-1 rounded font-semibold transition-all"
+            style={riskPct === r ? {
+              background: 'rgba(0,200,240,0.15)', color: 'var(--acc)', border: '1px solid var(--acc)',
+            } : {
+              background: 'transparent', color: 'var(--t3)', border: '1px solid var(--border2)',
+            }}
+          >
+            {r}%
+          </button>
+        ))}
+      </div>
+
+      {/* Results */}
+      <div className="space-y-1.5">
+        <div className="flex justify-between text-xs">
+          <span style={{ color: 'var(--t2)' }}>Risk amount</span>
+          <span className="font-mono font-semibold" style={{ color: 'var(--red)' }}>-${riskUSD}</span>
+        </div>
+        <div className="flex justify-between text-xs">
+          <span style={{ color: 'var(--t2)' }}>Potential profit</span>
+          <span className="font-mono font-semibold" style={{ color: 'var(--green)' }}>+${profitUSD}</span>
+        </div>
+        <div className="flex justify-between items-center pt-1" style={{ borderTop: '1px solid var(--border)' }}>
+          <span className="text-xs" style={{ color: 'var(--t2)' }}>Lot size</span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold font-mono" style={{ color: 'var(--acc)' }}>{lots} lots</span>
+            <span className="text-xs" style={{ color: 'var(--t3)' }}>
+              ({signal.pipsToSL} pip SL)
+            </span>
+          </div>
+        </div>
+        <div className="text-xs" style={{ color: 'var(--t3)' }}>
+          Standard: {lots} | Mini: {lots && lots !== '—' && lots !== '< 0.01' ? (parseFloat(lots) * 10).toFixed(1) : '—'} | Micro: {lots && lots !== '—' && lots !== '< 0.01' ? (parseFloat(lots) * 100).toFixed(0) : '—'} units
+        </div>
+      </div>
+
+      {spreadWarning && (
+        <div className="text-xs mt-2 p-1.5 rounded" style={{ background: 'rgba(255,183,0,0.1)', color: 'var(--amber)', border: '1px solid rgba(255,183,0,0.3)' }}>
+          Spread (~{spreadPips.toFixed(1)} pips) eats into TP ({signal.pipsToTP} pips).
+          {atrPips > spreadPips * 3 && ' High volatility widening spreads.'}
+          {' '}Consider wider target or reduce position size.
+        </div>
       )}
     </div>
   );
@@ -338,9 +443,13 @@ function buildCopyText(signal: any, pair: string, tf: string): string {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function SignalsPage() {
-  const { signal, loading: sigLoading, error: sigError, refetch } = useSignal();
+  const [tradingStyle, setTradingStyle] = useState<'scalp' | 'swing'>('swing');
+
+  const { signal, loading: sigLoading, error: sigError, refetch } = useSignal(tradingStyle);
   const { chart: ohlcv, loading: chartLoading } = useChart();
   const { activePair, activeTF } = usePair();
+  const { user } = useAuth();
+  const balance = user?.simulationBalance ?? 10000;
 
   const { price: livePrice } = useRealtimePrice(activePair);
 
@@ -609,6 +718,28 @@ export default function SignalsPage() {
       {/* ── Right sidebar ────────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-3 w-full lg:w-[262px] lg:flex-shrink-0">
 
+        {/* Scalp / Swing toggle */}
+        <div className="card p-2 flex gap-1">
+          {(['swing', 'scalp'] as const).map((style) => (
+            <button
+              key={style}
+              onClick={() => { setTradingStyle(style); }}
+              className="flex-1 text-xs font-semibold py-1.5 rounded transition-all"
+              style={tradingStyle === style ? {
+                background: style === 'scalp' ? 'rgba(255,183,0,0.2)' : 'rgba(0,200,240,0.15)',
+                color:      style === 'scalp' ? 'var(--amber)' : 'var(--acc)',
+                border:     `1px solid ${style === 'scalp' ? 'rgba(255,183,0,0.5)' : 'rgba(0,200,240,0.5)'}`,
+              } : {
+                background: 'transparent',
+                color: 'var(--t3)',
+                border: '1px solid var(--border2)',
+              }}
+            >
+              {style === 'scalp' ? '⚡ Scalp' : '📊 Swing'}
+            </button>
+          ))}
+        </div>
+
         {/* Session status — always visible */}
         <SessionStatusCard pair={activePair} />
 
@@ -678,7 +809,7 @@ export default function SignalsPage() {
               )}
 
               {/* Confluence meter */}
-              <ConfluenceMeter score={signal.confluenceScore} />
+              <ConfluenceMeter score={signal.confluenceScore} tradingStyle={tradingStyle} />
 
               {/* Validity */}
               {validity && signal.signal !== 'HOLD' && (
@@ -698,7 +829,7 @@ export default function SignalsPage() {
         </div>
 
         {/* Confluence breakdown — always shown when signal exists */}
-        {signal && <ConfluenceChecklist signal={signal} />}
+        {signal && <ConfluenceChecklist signal={signal} tradingStyle={tradingStyle} />}
 
         {/* Trade levels card — only for actionable BUY/SELL signals */}
         {signal && signal.signal !== 'HOLD' && (
@@ -739,6 +870,9 @@ export default function SignalsPage() {
             </button>
           </div>
         )}
+
+        {/* Position size calculator — always shown for actionable signals */}
+        <PositionSizeCard signal={signal} pair={activePair} balance={balance} />
 
         {/* Market bias card — always shown so the AI's directional thinking is visible */}
         {signal && (signal.htfBias || signal.bullScore != null) && (

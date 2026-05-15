@@ -15,7 +15,27 @@ const CONDITIONS = [
   { value: 'pattern_detected', label: 'Pattern Detected' },
 ];
 
-const PATTERNS = ['Bullish Engulfing', 'Bearish Engulfing', 'Hammer', 'Shooting Star', 'Doji'];
+const PATTERNS = [
+  // ── Single / two-candle ──────────────────────────
+  { value: 'Bullish Engulfing',  label: 'Bullish Engulfing ↑' },
+  { value: 'Bearish Engulfing',  label: 'Bearish Engulfing ↓' },
+  { value: 'Hammer',             label: 'Hammer ↑' },
+  { value: 'Shooting Star',      label: 'Shooting Star ↓' },
+  { value: 'Doji',               label: 'Doji (neutral)' },
+  // ── Caginalp & Laurent (1998) three-day patterns ─
+  { value: 'Three White Soldiers', label: 'Three White Soldiers ↑' },
+  { value: 'Three Black Crows',    label: 'Three Black Crows ↓' },
+  { value: 'Three Inside Up',      label: 'Three Inside Up ↑' },
+  { value: 'Three Inside Down',    label: 'Three Inside Down ↓' },
+  { value: 'Three Outside Up',     label: 'Three Outside Up ↑' },
+  { value: 'Three Outside Down',   label: 'Three Outside Down ↓' },
+  { value: 'Morning Star',         label: 'Morning Star ↑' },
+  { value: 'Evening Star',         label: 'Evening Star ↓' },
+];
+
+const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d'] as const;
+
+const PATTERN_TF_CONDITIONS = new Set(['pattern_detected', 'rsi_above', 'rsi_below', 'ai_signal_buy', 'ai_signal_sell']);
 
 const DEFAULT_FORM = {
   type: 'info' as 'buy' | 'sell' | 'info',
@@ -23,6 +43,7 @@ const DEFAULT_FORM = {
   condition: 'price_above',
   targetValue: '',
   targetPattern: '',
+  timeframe: '1h',
   enabled: true,
 };
 
@@ -50,11 +71,13 @@ export default function AlertsPage() {
 
   const isPattern = formData.condition === 'pattern_detected';
   const needsValue = !['ai_signal_buy', 'ai_signal_sell', 'pattern_detected'].includes(formData.condition);
+  const needsTf = PATTERN_TF_CONDITIONS.has(formData.condition);
 
   const buildPayload = () => {
     const p: any = { type: formData.type, pair: formData.pair, condition: formData.condition, enabled: formData.enabled };
     if (isPattern) p.targetPattern = formData.targetPattern;
     else if (needsValue) p.targetValue = parseFloat(formData.targetValue);
+    if (needsTf) p.timeframe = formData.timeframe;
     return p;
   };
 
@@ -69,7 +92,7 @@ export default function AlertsPage() {
 
   const handleEdit = (a: any) => {
     setEditingAlert(a);
-    setFormData({ type: a.type, pair: a.pair, condition: a.condition, targetValue: a.targetValue?.toString() ?? '', targetPattern: a.targetPattern ?? '', enabled: a.enabled });
+    setFormData({ type: a.type, pair: a.pair, condition: a.condition, targetValue: a.targetValue?.toString() ?? '', targetPattern: a.targetPattern ?? '', timeframe: a.timeframe ?? '1h', enabled: a.enabled });
     setShowForm(true);
   };
 
@@ -146,7 +169,7 @@ export default function AlertsPage() {
                   <label className="text-xs mb-1 block" style={{ color: 'var(--t3)' }}>Pattern</label>
                   <select className="inp" value={formData.targetPattern} onChange={(e) => setFormData({ ...formData, targetPattern: e.target.value })} required>
                     <option value="">Select pattern</option>
-                    {PATTERNS.map((p) => <option key={p} value={p}>{p}</option>)}
+                    {PATTERNS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                   </select>
                 </div>
               )}
@@ -154,6 +177,14 @@ export default function AlertsPage() {
                 <div>
                   <label className="text-xs mb-1 block" style={{ color: 'var(--t3)' }}>Target Value</label>
                   <input className="inp" type="number" step="0.00001" value={formData.targetValue} onChange={(e) => setFormData({ ...formData, targetValue: e.target.value })} placeholder="Enter value" required />
+                </div>
+              )}
+              {needsTf && (
+                <div>
+                  <label className="text-xs mb-1 block" style={{ color: 'var(--t3)' }}>Timeframe</label>
+                  <select className="inp" value={formData.timeframe} onChange={(e) => setFormData({ ...formData, timeframe: e.target.value })}>
+                    {TIMEFRAMES.map((tf) => <option key={tf} value={tf}>{tf}</option>)}
+                  </select>
                 </div>
               )}
               <div className="flex items-center gap-2 mt-4">
@@ -184,7 +215,7 @@ export default function AlertsPage() {
           <table className="w-full text-xs">
             <thead style={{ position: 'sticky', top: 0, background: 'var(--bg3)', zIndex: 1 }}>
               <tr style={{ color: 'var(--t3)', borderBottom: '1px solid var(--border)' }}>
-                {['Pair', 'Type', 'Condition', 'Value', 'Enabled', 'Status', ''].map((h) => (
+                {['Pair', 'Type', 'Condition', 'Value / Pattern', 'TF', 'Enabled', 'Status', ''].map((h) => (
                   <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>
                 ))}
               </tr>
@@ -200,6 +231,7 @@ export default function AlertsPage() {
                     </td>
                     <td className="px-3 py-2 capitalize" style={{ color: 'var(--t2)' }}>{a.condition.replace(/_/g, ' ')}</td>
                     <td className="px-3 py-2 font-mono-num" style={{ color: 'var(--t2)' }}>{a.targetPattern ?? a.targetValue ?? '—'}</td>
+                    <td className="px-3 py-2 font-mono-num text-xs" style={{ color: 'var(--t3)' }}>{a.timeframe ?? '1h'}</td>
                     <td className="px-3 py-2">
                       <Toggle checked={a.enabled} onChange={() => handleToggle(a)} />
                     </td>

@@ -11,3 +11,7 @@ export function getPnlCurve(params?: { startDate?: string; endDate?: string }) {
 export function getByPair(params?: { startDate?: string; endDate?: string }) {
   return api.get('/analytics/by-pair', { params });
 }
+
+export function getSignalAccuracy() {
+  return api.get('/analytics/signal-accuracy');
+}

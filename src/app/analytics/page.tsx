@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAnalytics } from '../../hooks/useAnalytics';
 import { useCoaching, CoachingData, TradingProfileData } from '../../hooks/useCoaching';
+import { getSignalAccuracy } from '../../services/analytics.service';
 
 // ── Shared sub-components ──────────────────────────────────────────────────────
 
@@ -401,10 +402,174 @@ function OverviewTab() {
   );
 }
 
+// ── Signal Accuracy Tab ────────────────────────────────────────────────────────
+
+interface AccuracyRecord {
+  pair: string;
+  timeframe: string;
+  predictedSignal: 'BUY' | 'SELL' | 'HOLD';
+  confidence: number;
+  wasCorrect: boolean;
+  outcome: string;
+  pipMove: number;
+  checkedAt: string;
+}
+
+interface AccuracyData {
+  total: number;
+  correct: number;
+  accuracy: number;
+  byPair: { pair: string; total: number; correct: number; accuracy: number }[];
+  byTimeframe: { timeframe: string; total: number; correct: number; accuracy: number }[];
+  recentRecords: AccuracyRecord[];
+}
+
+function outcomeLabel(outcome: string) {
+  switch (outcome) {
+    case 'tp_hit':        return { text: 'TP Hit',        color: 'var(--green)' };
+    case 'sl_hit':        return { text: 'SL Hit',        color: 'var(--red)' };
+    case 'moved_correct': return { text: 'Correct',       color: 'var(--green)' };
+    case 'moved_wrong':   return { text: 'Wrong',         color: 'var(--red)' };
+    default:              return { text: 'Flat',           color: 'var(--t3)' };
+  }
+}
+
+function AccuracyGauge({ pct }: { pct: number }) {
+  const color = pct >= 60 ? 'var(--green)' : pct >= 50 ? 'var(--amber)' : 'var(--red)';
+  return (
+    <div className="flex flex-col items-center justify-center py-4">
+      <div className="text-5xl font-bold font-mono-num" style={{ color }}>{pct}%</div>
+      <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>AI Signal Accuracy</div>
+      <div className="text-xs mt-0.5" style={{ color: pct >= 55 ? 'var(--green)' : 'var(--amber)' }}>
+        {pct >= 65 ? 'Excellent — high-confidence signals are reliable'
+          : pct >= 55 ? 'Good — signals directionally sound'
+          : pct >= 45 ? 'Fair — confluence filtering is improving'
+          : 'Building data — accuracy improves with more signals'}
+      </div>
+    </div>
+  );
+}
+
+function SignalAccuracyTab() {
+  const [data, setData] = useState<AccuracyData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    getSignalAccuracy()
+      .then((r) => setData(r.data?.data ?? r.data))
+      .catch(() => setError('Failed to load signal accuracy data'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return (
+    <div className="grid grid-cols-3 gap-3">
+      {[...Array(6)].map((_, i) => (
+        <div key={i} className="card h-24 animate-pulse" style={{ background: 'var(--bg4)' }} />
+      ))}
+    </div>
+  );
+
+  if (error || !data) return (
+    <div className="h-40 flex items-center justify-center text-xs" style={{ color: 'var(--t3)' }}>
+      {error || 'No accuracy data yet — signals are evaluated after their time horizon elapses.'}
+    </div>
+  );
+
+  if (data.total === 0) return (
+    <div className="card p-8 text-center">
+      <div className="text-3xl mb-3">📡</div>
+      <div className="text-sm font-semibold mb-1" style={{ color: 'var(--t1)' }}>No evaluated signals yet</div>
+      <div className="text-xs" style={{ color: 'var(--t3)' }}>
+        Signals are automatically evaluated after their time horizon. Check back after a few hours.
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Top row: gauge + pair + timeframe */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="card p-4">
+          <AccuracyGauge pct={data.accuracy} />
+          <div className="flex justify-between text-xs mt-3 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
+            <span style={{ color: 'var(--t3)' }}>Evaluated</span>
+            <span className="font-mono-num" style={{ color: 'var(--t1)' }}>{data.total} signals</span>
+          </div>
+          <div className="flex justify-between text-xs mt-1">
+            <span style={{ color: 'var(--t3)' }}>Correct</span>
+            <span className="font-mono-num" style={{ color: 'var(--green)' }}>{data.correct}</span>
+          </div>
+        </div>
+
+        <div className="card p-4">
+          <div className="text-xs font-semibold uppercase mb-3" style={{ color: 'var(--t3)' }}>Accuracy by Pair</div>
+          {data.byPair.map((p) => (
+            <WinRateBar key={p.pair} label={p.pair} value={p.accuracy} total={p.total} />
+          ))}
+        </div>
+
+        <div className="card p-4">
+          <div className="text-xs font-semibold uppercase mb-3" style={{ color: 'var(--t3)' }}>Accuracy by Timeframe</div>
+          {data.byTimeframe.map((t) => (
+            <WinRateBar key={t.timeframe} label={t.timeframe} value={t.accuracy} total={t.total} />
+          ))}
+        </div>
+      </div>
+
+      {/* Recent evaluated signals table */}
+      <div className="card flex-1 overflow-auto">
+        <div className="px-4 py-3 text-xs font-semibold uppercase" style={{ color: 'var(--t3)', borderBottom: '1px solid var(--border)' }}>
+          Recent Evaluated Signals
+        </div>
+        <table className="w-full text-xs">
+          <thead style={{ position: 'sticky', top: 0, background: 'var(--bg3)' }}>
+            <tr style={{ color: 'var(--t3)', borderBottom: '1px solid var(--border)' }}>
+              {['Pair', 'TF', 'Signal', 'Confidence', 'Outcome', 'Pip Move', 'Result', 'When'].map((h) => (
+                <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {data.recentRecords.map((r, i) => {
+              const oc = outcomeLabel(r.outcome);
+              const signalColor = r.predictedSignal === 'BUY' ? 'var(--green)' : r.predictedSignal === 'SELL' ? 'var(--red)' : 'var(--t3)';
+              return (
+                <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td className="px-3 py-2 font-semibold" style={{ color: 'var(--t1)' }}>{r.pair}</td>
+                  <td className="px-3 py-2 font-mono-num" style={{ color: 'var(--t3)' }}>{r.timeframe}</td>
+                  <td className="px-3 py-2">
+                    <span className="px-1.5 py-0.5 rounded font-bold text-xs" style={{ color: signalColor, background: `${signalColor}18` }}>
+                      {r.predictedSignal}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 font-mono-num" style={{ color: 'var(--t2)' }}>{r.confidence}%</td>
+                  <td className="px-3 py-2 font-semibold" style={{ color: oc.color }}>{oc.text}</td>
+                  <td className="px-3 py-2 font-mono-num" style={{ color: r.pipMove >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                    {r.pipMove >= 0 ? '+' : ''}{r.pipMove.toFixed(1)} pips
+                  </td>
+                  <td className="px-3 py-2">
+                    {r.wasCorrect
+                      ? <span className="text-xs font-bold" style={{ color: 'var(--green)' }}>✓</span>
+                      : <span className="text-xs font-bold" style={{ color: 'var(--red)' }}>✗</span>}
+                  </td>
+                  <td className="px-3 py-2" style={{ color: 'var(--t3)' }}>
+                    {new Date(r.checkedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function AnalyticsPage() {
-  const [tab, setTab] = useState<'overview' | 'coach'>('overview');
+  const [tab, setTab] = useState<'overview' | 'coach' | 'signals'>('overview');
 
   return (
     <div className="flex flex-col gap-3 h-full overflow-auto">
@@ -412,6 +577,7 @@ export default function AnalyticsPage() {
       <div className="flex items-center gap-1 pb-1" style={{ borderBottom: '1px solid var(--border)' }}>
         {([
           { id: 'overview', label: 'Overview' },
+          { id: 'signals',  label: 'Signal Accuracy' },
           { id: 'coach',    label: 'AI Coach ✦' },
         ] as const).map((t) => (
           <button
@@ -426,7 +592,7 @@ export default function AnalyticsPage() {
         ))}
       </div>
 
-      {tab === 'overview' ? <OverviewTab /> : <CoachTab />}
+      {tab === 'overview' ? <OverviewTab /> : tab === 'signals' ? <SignalAccuracyTab /> : <CoachTab />}
     </div>
   );
 }
