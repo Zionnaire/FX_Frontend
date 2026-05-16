@@ -412,6 +412,7 @@ interface AccuracyRecord {
   wasCorrect: boolean;
   outcome: string;
   pipMove: number;
+  patterns: string[];
   checkedAt: string;
 }
 
@@ -421,6 +422,7 @@ interface AccuracyData {
   accuracy: number;
   byPair: { pair: string; total: number; correct: number; accuracy: number }[];
   byTimeframe: { timeframe: string; total: number; correct: number; accuracy: number }[];
+  byPattern: { pattern: string; total: number; correct: number; accuracy: number }[];
   recentRecords: AccuracyRecord[];
 }
 
@@ -517,6 +519,20 @@ function SignalAccuracyTab() {
         </div>
       </div>
 
+      {/* Pattern accuracy — only shown when data exists */}
+      {data.byPattern?.length > 0 && (
+        <div className="card p-4">
+          <div className="text-xs font-semibold uppercase mb-3" style={{ color: 'var(--t3)' }}>
+            Accuracy by Candlestick Pattern
+          </div>
+          <div className="grid grid-cols-2 gap-x-6">
+            {data.byPattern.map((p) => (
+              <WinRateBar key={p.pattern} label={p.pattern} value={p.accuracy} total={p.total} />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Recent evaluated signals table */}
       <div className="card flex-1 overflow-auto">
         <div className="px-4 py-3 text-xs font-semibold uppercase" style={{ color: 'var(--t3)', borderBottom: '1px solid var(--border)' }}>
@@ -525,7 +541,7 @@ function SignalAccuracyTab() {
         <table className="w-full text-xs">
           <thead style={{ position: 'sticky', top: 0, background: 'var(--bg3)' }}>
             <tr style={{ color: 'var(--t3)', borderBottom: '1px solid var(--border)' }}>
-              {['Pair', 'TF', 'Signal', 'Confidence', 'Outcome', 'Pip Move', 'Result', 'When'].map((h) => (
+              {['Pair', 'TF', 'Signal', 'Confidence', 'Outcome', 'Pip Move', 'Patterns', 'Result', 'When'].map((h) => (
                 <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>
               ))}
             </tr>
@@ -547,6 +563,9 @@ function SignalAccuracyTab() {
                   <td className="px-3 py-2 font-semibold" style={{ color: oc.color }}>{oc.text}</td>
                   <td className="px-3 py-2 font-mono-num" style={{ color: r.pipMove >= 0 ? 'var(--green)' : 'var(--red)' }}>
                     {r.pipMove >= 0 ? '+' : ''}{r.pipMove.toFixed(1)} pips
+                  </td>
+                  <td className="px-3 py-2" style={{ color: 'var(--t3)', maxWidth: 160 }}>
+                    {r.patterns?.length > 0 ? r.patterns.join(', ') : '—'}
                   </td>
                   <td className="px-3 py-2">
                     {r.wasCorrect

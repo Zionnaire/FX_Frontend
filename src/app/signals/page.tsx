@@ -323,6 +323,57 @@ function ConfluenceChecklist({ signal, tradingStyle }: { signal: any; tradingSty
   );
 }
 
+// ─── Economic calendar widget ─────────────────────────────────────────────────
+
+interface CalendarEvent { title: string; country: string; date: string; impact: string; }
+
+function EconomicCalendarCard({ pair }: { pair: string }) {
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    import('../../services/api').then(({ default: api }) => {
+      api.get('/calendar', { params: { pair, hours: 24 } })
+        .then((r) => { if (!cancelled) { setEvents(r.data?.data ?? []); setLoaded(true); } })
+        .catch(() => { if (!cancelled) setLoaded(true); });
+    });
+    return () => { cancelled = true; };
+  }, [pair]);
+
+  const highImpact = events.filter((e) => e.impact === 'High');
+  if (!loaded || events.length === 0) return null;
+
+  return (
+    <div className="card p-3">
+      <div className="text-xs font-semibold uppercase mb-2" style={{ color: 'var(--t3)' }}>
+        Upcoming Events · {pair}
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {events.slice(0, 5).map((e, i) => {
+          const t   = new Date(e.date);
+          const utc = t.toUTCString().slice(17, 22) + ' UTC';
+          const impactColor = e.impact === 'High' ? 'var(--red)' : e.impact === 'Medium' ? 'var(--amber)' : 'var(--t3)';
+          return (
+            <div key={i} className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: impactColor }} />
+                <span style={{ color: 'var(--t2)' }}>{e.country} — {e.title}</span>
+              </div>
+              <span className="font-mono-num" style={{ color: 'var(--t3)' }}>{utc}</span>
+            </div>
+          );
+        })}
+      </div>
+      {highImpact.length > 0 && (
+        <div className="text-xs mt-2 p-1.5 rounded" style={{ background: 'rgba(255,56,86,0.08)', color: 'var(--red)', border: '1px solid rgba(255,56,86,0.25)' }}>
+          {highImpact.length} high-impact event{highImpact.length > 1 ? 's' : ''} upcoming — auto-trade disabled during news window.
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Position size calculator ─────────────────────────────────────────────────
 // Based on: Lot = (Balance × Risk%) / (SL_pips × PipValuePerLot)
 // Pip value per standard lot: GBP/USD=10, EUR/USD=10, XAU/USD=10, USD/JPY≈9.30
@@ -873,6 +924,9 @@ export default function SignalsPage() {
 
         {/* Position size calculator — always shown for actionable signals */}
         <PositionSizeCard signal={signal} pair={activePair} balance={balance} />
+
+        {/* Economic calendar — upcoming high-impact events for this pair */}
+        <EconomicCalendarCard pair={activePair} />
 
         {/* Market bias card — always shown so the AI's directional thinking is visible */}
         {signal && (signal.htfBias || signal.bullScore != null) && (
