@@ -1021,6 +1021,29 @@ export default function SignalsPage() {
                   </div>
                 </div>
                 <div className="flex flex-col gap-1 items-end">
+                  {signal.qualityTier && (
+                    <span
+                      className="text-xs px-2 py-0.5 rounded-full font-bold"
+                      style={{
+                        background: signal.qualityTier === 'A+' ? 'rgba(0,230,118,0.15)'
+                                  : signal.qualityTier === 'A'  ? 'rgba(0,200,240,0.12)'
+                                  : signal.qualityTier === 'B'  ? 'rgba(255,183,0,0.12)'
+                                  :                              'rgba(255,56,86,0.10)',
+                        color:      signal.qualityTier === 'A+' ? 'var(--green)'
+                                  : signal.qualityTier === 'A'  ? 'var(--acc)'
+                                  : signal.qualityTier === 'B'  ? 'var(--amber)'
+                                  :                              'var(--red)',
+                        border: `1px solid ${
+                          signal.qualityTier === 'A+' ? 'rgba(0,230,118,0.4)'
+                          : signal.qualityTier === 'A'  ? 'rgba(0,200,240,0.4)'
+                          : signal.qualityTier === 'B'  ? 'rgba(255,183,0,0.4)'
+                          :                              'rgba(255,56,86,0.3)'
+                        }`,
+                      }}
+                    >
+                      {signal.qualityTier} Tier
+                    </span>
+                  )}
                   <SessionBadge rating={signal.sessionRating} />
                   <EntryTypeBadge type={signal.entryType} />
                 </div>
@@ -1121,6 +1144,19 @@ export default function SignalsPage() {
               </div>
             </div>
 
+            {(signal as any).weeklyTrend && !(signal as any).weeklyTrend.includes('unavailable') && (
+              <div className="mb-1.5">
+                <span
+                  className="text-xs font-semibold px-1.5 py-0.5 rounded mr-1"
+                  style={{ background: 'rgba(255,183,0,0.12)', color: 'var(--amber)' }}
+                >
+                  WEEKLY
+                </span>
+                <span className="text-xs" style={{ color: 'var(--t2)' }}>
+                  {(signal as any).weeklyTrend.replace('Weekly: ', '')}
+                </span>
+              </div>
+            )}
             {signal.htfBias && (
               <p className="text-xs leading-relaxed" style={{ color: 'var(--t2)' }}>
                 {signal.htfBias}
