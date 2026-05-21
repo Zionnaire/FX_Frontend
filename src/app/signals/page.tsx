@@ -6,6 +6,8 @@ import { useChart } from '../../hooks/useChart';
 import { usePair } from '../../hooks/usePair';
 import { useAuth } from '../../hooks/useAuth';
 import { useRealtimePrice } from '../../hooks/useRealtimePrice';
+import { usePendingExecutions, type PendingExecution } from '../../hooks/usePendingExecutions';
+import api from '../../services/api';
 import { createChart, IChartApi, ISeriesApi } from 'lightweight-charts';
 import { calcRSI, calcMACD, calcEMA, calcBollingerBands } from '../../utils/indicators';
 import { C } from '../../utils/chartColors';
@@ -323,6 +325,168 @@ function ConfluenceChecklist({ signal, tradingStyle }: { signal: any; tradingSty
   );
 }
 
+// ─── Execution confirmation modal ────────────────────────────────────────────
+// Shows a 60-second countdown when autoTrade queues a trade.
+// Auto-approves on timeout; user can adjust lots, approve early, or cancel.
+
+function ExecutionModal({
+  exec, onApprove, onReject, onLotsChange,
+}: {
+  exec: PendingExecution;
+  onApprove: () => void;
+  onReject:  () => void;
+  onLotsChange: (lots: number) => void;
+}) {
+  const expiresAt = new Date(exec.approvalExpiresAt).getTime();
+  const [msLeft, setMsLeft] = useState(() => Math.max(0, expiresAt - Date.now()));
+  const [lots, setLots]     = useState(exec.lots);
+  const [acting, setActing] = useState(false);
+
+  // Countdown tick
+  useEffect(() => {
+    if (msLeft <= 0) { onApprove(); return; }
+    const id = setInterval(() => {
+      const remaining = Math.max(0, expiresAt - Date.now());
+      setMsLeft(remaining);
+      if (remaining <= 0) clearInterval(id);
+    }, 200);
+    return () => clearInterval(id);
+  }, [expiresAt]);
+
+  const pct      = Math.min(100, (msLeft / 60_000) * 100);
+  const secLeft  = Math.ceil(msLeft / 1000);
+  const dirColor = exec.direction === 'BUY' ? 'var(--green)' : 'var(--red)';
+
+  const handleApprove = async () => {
+    if (acting) return;
+    setActing(true);
+    if (lots !== exec.lots) await onLotsChange(lots);
+    onApprove();
+  };
+  const handleReject = async () => {
+    if (acting) return;
+    setActing(true);
+    onReject();
+  };
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(4px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+    >
+      <div
+        className="card p-5"
+        style={{
+          width: 380, maxWidth: '95vw',
+          border: `2px solid ${dirColor}40`,
+          boxShadow: `0 0 40px ${dirColor}20`,
+        }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <span
+              className="px-2 py-0.5 rounded text-sm font-bold"
+              style={{ background: `${dirColor}20`, color: dirColor }}
+            >
+              {exec.direction}
+            </span>
+            <span className="font-bold text-sm" style={{ color: 'var(--t1)' }}>{exec.pair}</span>
+            <span className="text-xs" style={{ color: 'var(--t3)' }}>{exec.entryType}</span>
+          </div>
+          <div className="text-xs font-mono font-bold" style={{ color: secLeft <= 10 ? 'var(--red)' : 'var(--amber)' }}>
+            {secLeft}s
+          </div>
+        </div>
+
+        {/* Countdown bar */}
+        <div className="rounded-full overflow-hidden mb-4" style={{ height: 4, background: 'var(--bg4)' }}>
+          <div
+            className="h-full rounded-full transition-all"
+            style={{
+              width: `${pct}%`,
+              background: secLeft <= 10 ? 'var(--red)' : 'var(--amber)',
+              transition: 'width 0.2s linear',
+            }}
+          />
+        </div>
+
+        {/* Trade details grid */}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs mb-4">
+          {[
+            ['Entry',       exec.entry.toFixed(exec.pair === 'XAU/USD' ? 2 : 5)],
+            ['Stop Loss',   exec.stopLoss.toFixed(exec.pair === 'XAU/USD' ? 2 : 5)],
+            ['Take Profit', exec.takeProfit.toFixed(exec.pair === 'XAU/USD' ? 2 : 5)],
+            ['R:R',         exec.riskReward],
+            ['SL Pips',     exec.pipsToSL],
+            ['TP Pips',     exec.pipsToTP],
+            ['Confidence',  `${exec.confidence}%`],
+            ['Confluence',  `${exec.confluenceScore}/8`],
+          ].map(([label, value]) => (
+            <div key={String(label)}>
+              <div style={{ color: 'var(--t3)' }}>{label}</div>
+              <div className="font-semibold font-mono-num" style={{ color: 'var(--t1)' }}>{value}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Lot size adjuster */}
+        <div className="mb-4">
+          <label className="text-xs mb-1 block" style={{ color: 'var(--t3)' }}>
+            Lot Size (auto-sized at {exec.riskPct}% risk)
+          </label>
+          <div className="flex gap-2 items-center">
+            <input
+              type="number" min="0.01" step="0.01"
+              value={lots}
+              onChange={(e) => setLots(parseFloat(e.target.value) || exec.lots)}
+              className="inp flex-1 text-center font-mono-num font-bold"
+              style={{ color: dirColor }}
+            />
+            <span className="text-xs" style={{ color: 'var(--t3)' }}>lots</span>
+          </div>
+        </div>
+
+        {/* Reasoning snippet */}
+        <div
+          className="text-xs p-2 rounded mb-4"
+          style={{ background: 'var(--bg2)', color: 'var(--t3)', lineHeight: 1.5 }}
+        >
+          {exec.reasoning.slice(0, 160)}{exec.reasoning.length > 160 ? '…' : ''}
+        </div>
+
+        {/* Auto-execute notice */}
+        <div className="text-xs text-center mb-4" style={{ color: 'var(--t3)' }}>
+          Auto-executes in <strong style={{ color: 'var(--amber)' }}>{secLeft}s</strong> — cancel to skip this trade
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex gap-3">
+          <button
+            onClick={handleReject}
+            disabled={acting}
+            className="flex-1 py-2 rounded text-sm font-semibold transition-all"
+            style={{ background: 'var(--bg4)', color: 'var(--t2)', border: '1px solid var(--border2)' }}
+          >
+            Cancel Trade
+          </button>
+          <button
+            onClick={handleApprove}
+            disabled={acting}
+            className="flex-1 py-2 rounded text-sm font-bold transition-all"
+            style={{ background: dirColor, color: '#000' }}
+          >
+            Execute Now
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Economic calendar widget ─────────────────────────────────────────────────
 
 interface CalendarEvent { title: string; country: string; date: string; impact: string; }
@@ -333,11 +497,9 @@ function EconomicCalendarCard({ pair }: { pair: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    import('../../services/api').then(({ default: api }) => {
-      api.get('/calendar', { params: { pair, hours: 24 } })
-        .then((r) => { if (!cancelled) { setEvents(r.data?.data ?? []); setLoaded(true); } })
-        .catch(() => { if (!cancelled) setLoaded(true); });
-    });
+    api.get('/calendar', { params: { pair, hours: 24 } })
+      .then((r) => { if (!cancelled) { setEvents(r.data?.data ?? []); setLoaded(true); } })
+      .catch(() => { if (!cancelled) setLoaded(true); });
     return () => { cancelled = true; };
   }, [pair]);
 
@@ -376,12 +538,12 @@ function EconomicCalendarCard({ pair }: { pair: string }) {
 
 // ─── Position size calculator ─────────────────────────────────────────────────
 // Based on: Lot = (Balance × Risk%) / (SL_pips × PipValuePerLot)
-// Pip value per standard lot: GBP/USD=10, EUR/USD=10, XAU/USD=10, USD/JPY≈9.30
+// Pip value per standard lot: GBP/USD=10, EUR/USD=10, XAU/USD=1 (100oz×$0.01), USD/JPY≈9.30
 
 function calcLotSize(pair: string, balance: number, riskPct: number, slPips: number): string {
   if (slPips <= 0 || balance <= 0) return '—';
   const riskUSD = balance * (riskPct / 100);
-  const pipVal = pair === 'XAU/USD' ? 10 : pair === 'USD/JPY' ? 9.3 : 10;
+  const pipVal = pair === 'XAU/USD' ? 1 : pair === 'USD/JPY' ? 9.3 : 10;
   const raw = riskUSD / (slPips * pipVal);
   // Round down to nearest 0.01
   const lots = Math.floor(raw * 100) / 100;
@@ -500,9 +662,13 @@ export default function SignalsPage() {
   const { chart: ohlcv, loading: chartLoading } = useChart();
   const { activePair, activeTF } = usePair();
   const { user } = useAuth();
-  const balance = user?.simulationBalance ?? 10000;
+  const balance         = user?.simulationBalance ?? 10000;
+  const autoTradeActive = user?.autoTrade?.enabled ?? false;
 
   const { price: livePrice } = useRealtimePrice(activePair);
+
+  // Auto-trade execution queue
+  const { pendingApproval, approve, reject, setLots } = usePendingExecutions(autoTradeActive);
 
   const mainRef        = useRef<HTMLDivElement>(null);
   const rsiRef         = useRef<HTMLDivElement>(null);
@@ -699,6 +865,16 @@ export default function SignalsPage() {
   }, [refetch]);
 
   return (
+    <>
+    {/* Execution confirmation modal — renders above everything */}
+    {pendingApproval && (
+      <ExecutionModal
+        exec={pendingApproval}
+        onApprove={() => approve(pendingApproval._id)}
+        onReject={()  => reject(pendingApproval._id)}
+        onLotsChange={(l) => setLots(pendingApproval._id, l)}
+      />
+    )}
     <PullToRefresh onRefresh={handleRefresh}>
     <div className="flex flex-col lg:flex-row gap-3 min-h-full">
       {/* ── Chart area ──────────────────────────────────────────────────────── */}
@@ -993,5 +1169,6 @@ export default function SignalsPage() {
       </div>
     </div>
     </PullToRefresh>
+    </>
   );
 }
