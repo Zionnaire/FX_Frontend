@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useAnalytics } from '../../hooks/useAnalytics';
 import { useCoaching, CoachingData, TradingProfileData } from '../../hooks/useCoaching';
 import { getSignalAccuracy } from '../../services/analytics.service';
+import { useMonteCarlo } from '../../hooks/useMonteCarlo';
 
 // ── Shared sub-components ──────────────────────────────────────────────────────
 
@@ -585,19 +586,128 @@ function SignalAccuracyTab() {
   );
 }
 
+// ── Monte Carlo Tab ────────────────────────────────────────────────────────────
+
+function MonteCarloTab() {
+  const { data, loading, error, run } = useMonteCarlo();
+  const [days, setDays]     = useState(90);
+  const [iters, setIters]   = useState(1000);
+  const [balance, setBalance] = useState(10000);
+
+  const bars = data ? [
+    { label: 'P5 (Worst 5%)',  value: data.p5_return_pct,     color: 'var(--red)' },
+    { label: 'P25',            value: data.p25_return_pct,    color: 'var(--amber)' },
+    { label: 'P50 (Median)',   value: data.median_return_pct, color: 'var(--acc)' },
+    { label: 'P75',            value: data.p75_return_pct,    color: 'var(--green)' },
+    { label: 'P95 (Best 5%)',  value: data.p95_return_pct,    color: 'var(--purple)' },
+  ] : [];
+
+  return (
+    <div className="flex flex-col gap-5">
+      {/* Config */}
+      <div className="flex flex-wrap gap-3 items-end">
+        {[
+          { label: 'Lookback Days', val: days,    set: setDays,    min: 10, max: 365 },
+          { label: 'Iterations',    val: iters,   set: setIters,   min: 100, max: 5000 },
+          { label: 'Balance ($)',   val: balance, set: setBalance, min: 100, max: 1000000 },
+        ].map(({ label, val, set, min, max }) => (
+          <div key={label} className="flex flex-col gap-1">
+            <label className="text-xs" style={{ color: 'var(--t2)' }}>{label}</label>
+            <input type="number" value={val} onChange={(e) => set(+e.target.value)} min={min} max={max}
+              className="w-32 px-3 py-2 rounded-lg text-sm focus:outline-none"
+              style={{ background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--t1)' }} />
+          </div>
+        ))}
+        <button onClick={() => run({ days, iterations: iters, balance })} disabled={loading}
+          className="px-4 py-2 rounded-lg text-sm font-semibold"
+          style={{ background: 'var(--acc)', color: 'var(--bg)', opacity: loading ? 0.6 : 1 }}>
+          {loading ? 'Running…' : 'Run Simulation'}
+        </button>
+      </div>
+
+      {error && <div className="text-xs p-3 rounded" style={{ color: 'var(--red)', background: 'rgba(255,56,86,0.06)' }}>{error}</div>}
+
+      {data && (
+        <>
+          {/* Summary */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { label: 'Sample Trades',    value: data.sample_trades,                                            color: 'var(--t1)' },
+              { label: 'Win Rate',         value: `${data.expected_win_rate}%`,                                  color: 'var(--acc)' },
+              { label: 'Ruin Probability', value: `${data.ruin_probability}%`,                                   color: data.ruin_probability > 5 ? 'var(--red)' : 'var(--green)' },
+              { label: 'Risk of Loss',     value: `${data.risk_of_loss_pct}%`,                                   color: data.risk_of_loss_pct > 30 ? 'var(--amber)' : 'var(--green)' },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="card p-4 text-center">
+                <div className="text-xl font-bold font-mono-num" style={{ color }}>{value}</div>
+                <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>{label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Return distribution */}
+          <div className="card p-5">
+            <div className="text-xs font-semibold uppercase mb-4" style={{ color: 'var(--t3)' }}>Return Distribution (% of starting balance)</div>
+            <div className="flex flex-col gap-3">
+              {bars.map(({ label, value, color }) => (
+                <div key={label}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span style={{ color: 'var(--t2)' }}>{label}</span>
+                    <span className="font-mono-num font-semibold" style={{ color }}>
+                      {value >= 0 ? '+' : ''}{value.toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--border2)' }}>
+                    <div className="h-full rounded-full"
+                      style={{ width: `${Math.min(100, Math.max(0, 50 + value))}%`, background: color }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Drawdown distribution */}
+          <div className="card p-5">
+            <div className="text-xs font-semibold uppercase mb-4" style={{ color: 'var(--t3)' }}>Max Drawdown Distribution</div>
+            <div className="grid grid-cols-4 gap-3">
+              {[
+                { label: 'Median DD',   value: `${data.max_drawdown_p50}%`,  color: 'var(--acc)' },
+                { label: 'P75 DD',      value: `${data.max_drawdown_p75}%`,  color: 'var(--amber)' },
+                { label: 'P90 DD',      value: `${data.max_drawdown_p90}%`,  color: 'var(--amber)' },
+                { label: 'P95 DD',      value: `${data.max_drawdown_p95}%`,  color: 'var(--red)' },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="text-center">
+                  <div className="text-lg font-bold font-mono-num" style={{ color }}>{value}</div>
+                  <div className="text-xs mt-0.5" style={{ color: 'var(--t3)' }}>{label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {!data && !loading && (
+        <div className="text-center py-12 text-sm" style={{ color: 'var(--t3)' }}>
+          Configure parameters and click Run Simulation to stress-test your historical trade sequence
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function AnalyticsPage() {
-  const [tab, setTab] = useState<'overview' | 'coach' | 'signals'>('overview');
+  const [tab, setTab] = useState<'overview' | 'coach' | 'signals' | 'montecarlo'>('overview');
 
   return (
     <div className="flex flex-col gap-3 h-full overflow-auto">
       {/* Tab bar */}
-      <div className="flex items-center gap-1 pb-1" style={{ borderBottom: '1px solid var(--border)' }}>
+      <div className="flex items-center gap-1 pb-1 flex-wrap" style={{ borderBottom: '1px solid var(--border)' }}>
         {([
-          { id: 'overview', label: 'Overview' },
-          { id: 'signals',  label: 'Signal Accuracy' },
-          { id: 'coach',    label: 'AI Coach ✦' },
+          { id: 'overview',    label: 'Overview' },
+          { id: 'signals',     label: 'Signal Accuracy' },
+          { id: 'montecarlo',  label: 'Monte Carlo' },
+          { id: 'coach',       label: 'AI Coach ✦' },
         ] as const).map((t) => (
           <button
             key={t.id}
@@ -611,7 +721,10 @@ export default function AnalyticsPage() {
         ))}
       </div>
 
-      {tab === 'overview' ? <OverviewTab /> : tab === 'signals' ? <SignalAccuracyTab /> : <CoachTab />}
+      {tab === 'overview'   && <OverviewTab />}
+      {tab === 'signals'    && <SignalAccuracyTab />}
+      {tab === 'montecarlo' && <MonteCarloTab />}
+      {tab === 'coach'      && <CoachTab />}
     </div>
   );
 }

@@ -11,6 +11,8 @@ import { createChart, ISeriesApi } from 'lightweight-charts';
 import { C } from '../utils/chartColors';
 import { getPriceFormat } from '../utils/constants';
 import PullToRefresh from '../components/PullToRefresh';
+import { useDailyBriefing } from '../hooks/usePortfolio';
+import { usePropFirm } from '../hooks/usePropFirm';
 
 // ─── MiniChart with live candle updating ─────────────────────────────────────
 function MiniChart({ data, pair, livePrice }: { data: any[]; pair: string; livePrice?: number | null }) {
@@ -147,6 +149,74 @@ function flattenIndicators(raw: Record<string, any>): { name: string; value: str
   return rows;
 }
 
+// ─── Prop Firm mini-card ──────────────────────────────────────────────────────
+function PropFirmMiniCard() {
+  const { status } = usePropFirm();
+  if (!status) return null;
+
+  const dailyPct   = status.daily_loss_used_pct ?? 0;
+  const limitPct   = status.challenge?.daily_loss_limit_pct ?? 5;
+  const barPct     = Math.min(100, (dailyPct / limitPct) * 100);
+  const barColor   = barPct >= 80 ? 'var(--red)' : barPct >= 60 ? 'var(--amber)' : 'var(--green)';
+
+  return (
+    <div className="card p-3" style={{ border: status.can_trade ? '1px solid var(--border)' : '1px solid rgba(255,56,86,0.4)' }}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold" style={{ color: 'var(--t2)' }}>
+          {status.challenge?.firm_name ?? 'Prop Firm'} · {status.challenge?.phase}
+        </span>
+        <span className="text-xs font-bold" style={{ color: status.can_trade ? 'var(--green)' : 'var(--red)' }}>
+          {status.can_trade ? '✓ OK' : '✗ BLOCKED'}
+        </span>
+      </div>
+      <div className="h-1.5 rounded-full overflow-hidden mb-1.5" style={{ background: 'var(--bg4)' }}>
+        <div className="h-full rounded-full" style={{ width: `${barPct}%`, background: barColor }} />
+      </div>
+      <div className="flex justify-between text-xs" style={{ color: 'var(--t3)' }}>
+        <span>Daily loss: <span style={{ color: barColor }}>{dailyPct.toFixed(1)}%</span> / {limitPct}%</span>
+        <span>Profit: <span style={{ color: 'var(--green)' }}>{status.profit_progress_pct?.toFixed(0)}%</span></span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Daily briefing mini-card ─────────────────────────────────────────────────
+function BriefingMiniCard() {
+  const { data } = useDailyBriefing();
+  if (!data) return null;
+
+  const hasCautions = data.cautions?.length > 0;
+  const topRec      = data.recommendations?.[0];
+  const topCaution  = data.cautions?.[0];
+
+  return (
+    <div className="card p-3">
+      <div className="flex items-center gap-1.5 mb-2">
+        <span className="text-xs font-semibold" style={{ color: 'var(--t2)' }}>Today's Brief</span>
+        <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--bg4)', color: 'var(--acc)' }}>{data.session}</span>
+      </div>
+
+      {hasCautions && topCaution && (
+        <p className="text-xs mb-2 p-1.5 rounded" style={{ color: 'var(--amber)', background: 'rgba(255,183,0,0.06)' }}>
+          {topCaution.slice(0, 80)}{topCaution.length > 80 ? '…' : ''}
+        </p>
+      )}
+
+      {topRec && (
+        <p className="text-xs" style={{ color: 'var(--t2)' }}>
+          {topRec.slice(0, 100)}{topRec.length > 100 ? '…' : ''}
+        </p>
+      )}
+
+      {data.current_streak?.count >= 3 && (
+        <div className="mt-2 text-xs font-semibold" style={{ color: data.current_streak.type === 'win' ? 'var(--green)' : 'var(--red)' }}>
+          {data.current_streak.count}× {data.current_streak.type} streak
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const { signal, loading: sigLoading, refetch: refreshSignal } = useSignal();
@@ -275,6 +345,12 @@ export default function Dashboard() {
 
         {/* ── Right column — signal panel + news ─────────────────────────────── */}
         <div className={`flex flex-col gap-3 lg:overflow-auto w-full lg:w-[272px] lg:flex-shrink-0 ${tab === 'chart' ? 'hidden lg:flex' : 'flex'}`}>
+
+          {/* Prop firm mini-card (only when an active challenge exists) */}
+          <PropFirmMiniCard />
+
+          {/* Daily briefing widget */}
+          <BriefingMiniCard />
 
           {/* Signal card */}
           <div className="card p-4">

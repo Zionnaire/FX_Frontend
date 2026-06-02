@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 import { updateAutoTrade, regenerateApiKey } from '../../services/execution.service';
+import api from '../../services/api';
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
   return (
@@ -204,6 +205,92 @@ export default function SettingsPage() {
         </ol>
       </div>
 
+      {/* ── Telegram Notifications ─────────────────────────────────────────── */}
+      <TelegramSection />
+
+    </div>
+  );
+}
+
+function TelegramSection() {
+  const { addToast } = useToast();
+  const [chatId, setChatId]     = useState('');
+  const [enabled, setEnabled]   = useState(false);
+  const [saving, setSaving]     = useState(false);
+  const [topics, setTopics]     = useState({
+    on_signal: true, on_auto_trade: true, on_alert: true,
+    on_daily_briefing: true, on_circuit_breaker: true,
+  });
+
+  const save = async () => {
+    if (!chatId.trim()) { addToast('Enter your Telegram Chat ID first', 'error'); return; }
+    setSaving(true);
+    try {
+      await api.patch('/user/profile', { telegram: { chat_id: chatId, enabled, ...topics } });
+      addToast('Telegram settings saved', 'success');
+    } catch {
+      addToast('Failed to save Telegram settings', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputCls = "w-full px-3 py-2 rounded-lg text-sm focus:outline-none";
+  const inputStyle = { background: 'var(--bg4)', border: '1px solid var(--border)', color: 'var(--t1)' };
+
+  return (
+    <div className="rounded-xl p-5" style={{ background: 'var(--bg3)', border: '1px solid var(--border)' }}>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-sm font-bold" style={{ color: 'var(--t1)' }}>Telegram Notifications</h2>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--t2)' }}>
+            Get A+ signals, auto-trade alerts, and circuit breaker warnings in Telegram
+          </p>
+        </div>
+        <label className="toggle-switch">
+          <input type="checkbox" checked={enabled} onChange={() => setEnabled((v) => !v)} />
+          <span className="slider" />
+        </label>
+      </div>
+
+      {enabled && (
+        <div className="flex flex-col gap-4">
+          <Field label="Telegram Chat ID"
+            hint='Open t.me/userinfobot in Telegram and send /start — it replies with your Chat ID'>
+            <input value={chatId} onChange={(e) => setChatId(e.target.value)}
+              placeholder="e.g. 123456789"
+              className={inputCls} style={inputStyle} />
+          </Field>
+
+          <div>
+            <label className="text-xs font-semibold block mb-3" style={{ color: 'var(--t2)' }}>Notify me for</label>
+            <div className="flex flex-col gap-2">
+              {([
+                { key: 'on_signal',          label: 'A+ Signals generated' },
+                { key: 'on_auto_trade',      label: 'Auto-trade queued' },
+                { key: 'on_alert',           label: 'Price/RSI alerts fired' },
+                { key: 'on_daily_briefing',  label: 'Daily pre-session briefing' },
+                { key: 'on_circuit_breaker', label: 'Circuit breaker / prop firm warnings' },
+              ] as const).map(({ key, label }) => (
+                <div key={key} className="flex items-center justify-between py-1">
+                  <span className="text-xs" style={{ color: 'var(--t1)' }}>{label}</span>
+                  <label className="toggle-switch">
+                    <input type="checkbox" checked={topics[key]}
+                      onChange={() => setTopics((p) => ({ ...p, [key]: !p[key] }))} />
+                    <span className="slider" />
+                  </label>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <button onClick={save} disabled={saving}
+            className="self-start px-4 py-2 rounded-lg text-sm font-semibold"
+            style={{ background: 'var(--acc)', color: 'var(--bg)', opacity: saving ? 0.6 : 1 }}>
+            {saving ? 'Saving…' : 'Save Telegram Settings'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
